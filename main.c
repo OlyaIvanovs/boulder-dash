@@ -3,10 +3,9 @@
 
 int main()
 {
-    SDL_Window *window;
-    SDL_Init(SDL_INIT_VIDEO);
+    SDL_Init(SDL_INIT_VIDEO & SDL_INIT_JOYSTICK);
 
-    window = SDL_CreateWindow(
+    SDL_Window *window = SDL_CreateWindow(
         "Boulder-Dash",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
@@ -17,6 +16,12 @@ int main()
 
     if (window == NULL) {
         printf("Couldn't create window: %s\n", SDL_GetError());
+        return 1;
+    }
+
+    SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+    if (renderer == NULL) {
+        printf("Couldn't create renderer: %s\n", SDL_GetError());
         return 1;
     }
 
