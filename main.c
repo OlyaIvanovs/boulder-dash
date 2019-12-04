@@ -25,6 +25,12 @@ int main()
         return 1;
     }
 
+    SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STATIC, 320, 952);
+    if (texture == NULL) {
+        printf("Couldn't create texture: %s\n", SDL_GetError());
+        return 1;
+    }
+
     SDL_Delay(3000);
 
     SDL_DestroyWindow(window);
