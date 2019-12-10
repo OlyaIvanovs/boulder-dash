@@ -58,10 +58,19 @@ int main()
 
     SDL_RenderPresent(renderer);
     
-    SDL_Delay(7000);
+    while (1) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            if (event.type == SDL_QUIT) {
+                SDL_DestroyWindow(window);
+                SDL_Quit();
+                return 0;
+            }
+        }
+        SDL_Delay(100);
+    }
 
     SDL_DestroyWindow(window);
-
     SDL_Quit();
     return 0;
 }
