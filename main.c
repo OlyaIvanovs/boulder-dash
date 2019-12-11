@@ -15,7 +15,7 @@ int main()
         SDL_WINDOWPOS_UNDEFINED,
         640,
         980,
-        SDL_WINDOW_OPENGL
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
     );
 
     if (window == NULL) {
@@ -29,20 +29,20 @@ int main()
         return 1;
     }
 
-    SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB888, SDL_TEXTUREACCESS_STATIC, 320, 952);
-    if (texture == NULL) {
-        printf("Couldn't create texture: %s\n", SDL_GetError());
-        return 1;
-    }
-
     int width, height, num_channels;
-    void *pixels = stbi_load("bd-sprites.png", &width, &height, &num_channels, 3);
+    void *pixels = stbi_load("bd-sprites.png", &width, &height, &num_channels, 0);
 
     SDL_Rect rect;
     rect.x = 0;
     rect.y = 0;
     rect.w = width;
     rect.h = height;
+
+    SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
+    if (texture == NULL) {
+        printf("Couldn't create texture: %s\n", SDL_GetError());
+        return 1;
+    }
 
     int result = SDL_UpdateTexture(texture, &rect, pixels, width*num_channels);
     if (result != 0) {
@@ -56,8 +56,6 @@ int main()
         return 1;
     }
 
-    SDL_RenderPresent(renderer);
-    
     while (1) {
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -67,6 +65,8 @@ int main()
                 return 0;
             }
         }
+        
+        SDL_RenderPresent(renderer);
         SDL_Delay(100);
     }
 
