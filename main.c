@@ -32,11 +32,7 @@ int main()
     int width, height, num_channels;
     void *pixels = stbi_load("bd-sprites.png", &width, &height, &num_channels, 0);
 
-    SDL_Rect rect;
-    rect.x = 0;
-    rect.y = 0;
-    rect.w = width;
-    rect.h = height;
+    SDL_Rect rect = {0, 0, width, height};
 
     SDL_Texture *texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
     if (texture == NULL) {
@@ -44,17 +40,16 @@ int main()
         return 1;
     }
 
-    int result = SDL_UpdateTexture(texture, &rect, pixels, width*num_channels);
+    int result = SDL_UpdateTexture(texture, &rect, pixels, width*num_channels); // load to video memory
     if (result != 0) {
         printf("Couldn't update texture: %s\n", SDL_GetError());
         return 1;
     }
 
-    result = SDL_RenderCopy(renderer, texture, &rect, &rect);
-    if (result != 0) {
-        printf("Couldn't renders texture: %s\n", SDL_GetError());
-        return 1;
-    }
+    SDL_Rect dst = {100, 100, 128, 128};
+    SDL_Rect src = {0, 32, 32, 32};
+
+    int num_loops = 0;
 
     while (1) {
         SDL_Event event;
@@ -65,9 +60,22 @@ int main()
                 return 0;
             }
         }
+
+        if ((num_loops % 10) == 0) {
+            src.x += 32;
+            if (src.x > 7*32) 
+                src.x = 0;
+
+        }
+        result = SDL_RenderCopy(renderer, texture, &src, &dst);
+        // if (result != 0) {
+        //     printf("Couldn't renders texture: %s\n", SDL_GetError());
+        //     return 1;
+        // }
         
         SDL_RenderPresent(renderer);
-        SDL_Delay(100);
+        num_loops++;
+        // SDL_Delay(100);
     }
 
     SDL_DestroyWindow(window);
