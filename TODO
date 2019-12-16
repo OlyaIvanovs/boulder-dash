@@ -1,6 +1,15 @@
--try resize window
+- try to enable VSync
 
-DONE 
+DONE
+16.12.2019
+-calculated the time it takes to render a frame
+
+15.12.2019
+-trying to slow down animation 
+
+13.12.2019
+- animation
+
 11.12.2019
 - fix the image
 

@@ -1,9 +1,12 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
+#include <stdint.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
 #include "lib/stb_image.h"
+
+typedef uint64_t u64;
 
 int main()
 {
@@ -50,8 +53,11 @@ int main()
     SDL_Rect src = {0, 32, 32, 32};
 
     int num_loops = 0;
+    u64 start = SDL_GetPerformanceCounter();
+    double frequency = (double)SDL_GetPerformanceFrequency();
 
     while (1) {
+        
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
@@ -75,7 +81,11 @@ int main()
         
         SDL_RenderPresent(renderer);
         num_loops++;
-        // SDL_Delay(100);
+        SDL_Delay(10);
+        u64 now = SDL_GetPerformanceCounter();
+        double elapsed_ms = (double)(now - start) * 1000 / frequency; 
+        start = now;
+        printf("MS %.3lf \n", elapsed_ms);
     }
 
     SDL_DestroyWindow(window);
