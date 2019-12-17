@@ -56,6 +56,8 @@ int main()
     u64 start = SDL_GetPerformanceCounter();
     double frequency = (double)SDL_GetPerformanceFrequency();
 
+    SDL_GL_SetSwapInterval(1);
+
     while (1) {
         
         SDL_Event event;
@@ -81,7 +83,6 @@ int main()
         
         SDL_RenderPresent(renderer);
         num_loops++;
-        SDL_Delay(10);
         u64 now = SDL_GetPerformanceCounter();
         double elapsed_ms = (double)(now - start) * 1000 / frequency; 
         start = now;
