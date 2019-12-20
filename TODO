@@ -1,6 +1,15 @@
-- try to enable VSync
+- move character
+- move with running animation 
+- generate level
+
 
 DONE
+20.12.2019
+-level 40*22
+
+17.12.2019
+- try to enable VSync
+
 16.12.2019
 -calculated the time it takes to render a frame
 

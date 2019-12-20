@@ -69,7 +69,7 @@ int main()
             }
         }
 
-        if ((num_loops % 10) == 0) {
+        if ((num_loops % 5) == 0) {
             src.x += 32;
             if (src.x > 7*32) 
                 src.x = 0;
@@ -82,11 +82,15 @@ int main()
         // }
         
         SDL_RenderPresent(renderer);
+
+        {
+            u64 now = SDL_GetPerformanceCounter();
+            double elapsed_ms = (double)(now - start) * 1000 / frequency; 
+            start = now;
+            printf("MS %.3lf \n", elapsed_ms);
+        }
+
         num_loops++;
-        u64 now = SDL_GetPerformanceCounter();
-        double elapsed_ms = (double)(now - start) * 1000 / frequency; 
-        start = now;
-        printf("MS %.3lf \n", elapsed_ms);
     }
 
     SDL_DestroyWindow(window);
