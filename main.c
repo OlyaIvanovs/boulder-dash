@@ -6,6 +6,8 @@
 #define STBI_ONLY_PNG
 #include "lib/stb_image.h"
 
+#include "levels.h"
+
 typedef uint64_t u64;
 
 int main()
@@ -16,8 +18,8 @@ int main()
         "Boulder-Dash",
         SDL_WINDOWPOS_UNDEFINED,
         SDL_WINDOWPOS_UNDEFINED,
-        640,
-        980,
+        960,
+        480,
         SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
     );
 
@@ -49,6 +51,11 @@ int main()
         return 1;
     }
 
+    int viewport_x = 0;
+    int viewport_y = 0;
+    int viewport_width = 30;
+    int viewport_height = 15;
+
     SDL_Rect dst = {100, 100, 128, 128};
     SDL_Rect src = {0, 32, 32, 32};
 
@@ -75,7 +82,26 @@ int main()
                 src.x = 0;
 
         }
-        result = SDL_RenderCopy(renderer, texture, &src, &dst);
+
+        for (int y = 0; y < viewport_height; y++) {
+            for (int x = 0; x < viewport_width; x++) {
+                SDL_Rect src = {0, 0, 32, 32};
+                SDL_Rect dst = {x * 32, y * 32, 32, 32};
+                char tile_type = cave_1[viewport_y + y][viewport_x + x];                
+                if (tile_type == 'r') {
+                    src.x = 0;
+                    src.y = 224;        
+                } else if (tile_type == 'w') {
+                    src.x = 96;
+                    src.y = 192;
+                } else if (tile_type == '.') {
+                    src.x = 32;
+                    src.y = 224;
+                }
+                SDL_RenderCopy(renderer, texture, &src, &dst);
+            }
+        }
+        // result = SDL_RenderCopy(renderer, texture, &src, &dst);
         // if (result != 0) {
         //     printf("Couldn't renders texture: %s\n", SDL_GetError());
         //     return 1;

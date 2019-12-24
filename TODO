@@ -1,9 +1,11 @@
-- move character
-- move with running animation 
-- generate level
-
+- enlarge level
+- fix bug with wall
+- draw character
 
 DONE
+24.12-2019
+-drew level
+
 20.12.2019
 -level 40*22
 
