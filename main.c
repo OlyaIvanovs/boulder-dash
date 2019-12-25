@@ -20,13 +20,16 @@ int main()
         SDL_WINDOWPOS_UNDEFINED,
         960,
         480,
-        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE
+        SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP
     );
 
     if (window == NULL) {
         printf("Couldn't create window: %s\n", SDL_GetError());
         return 1;
     }
+
+    int window_width, window_height;
+    SDL_GetWindowSize(window, &window_width, &window_height);
 
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (renderer == NULL) {
@@ -54,10 +57,10 @@ int main()
     int viewport_x = 0;
     int viewport_y = 0;
     int viewport_width = 30;
-    int viewport_height = 15;
-
-    SDL_Rect dst = {100, 100, 128, 128};
-    SDL_Rect src = {0, 32, 32, 32};
+    int tile_size = window_width / viewport_width;
+    int window_xoffset = (window_width % viewport_width) / 2;
+    int viewport_height = window_height / tile_size;
+    int window_yoffset = (window_height % viewport_height) / 2;
 
     int num_loops = 0;
     u64 start = SDL_GetPerformanceCounter();
@@ -76,17 +79,10 @@ int main()
             }
         }
 
-        if ((num_loops % 5) == 0) {
-            src.x += 32;
-            if (src.x > 7*32) 
-                src.x = 0;
-
-        }
-
         for (int y = 0; y < viewport_height; y++) {
             for (int x = 0; x < viewport_width; x++) {
                 SDL_Rect src = {0, 0, 32, 32};
-                SDL_Rect dst = {x * 32, y * 32, 32, 32};
+                SDL_Rect dst = {x * tile_size, y * tile_size, tile_size, tile_size};
                 char tile_type = cave_1[viewport_y + y][viewport_x + x];                
                 if (tile_type == 'r') {
                     src.x = 0;
