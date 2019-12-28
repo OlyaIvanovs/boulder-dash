@@ -68,20 +68,26 @@ int main()
 
     SDL_GL_SetSwapInterval(1);
 
-    while (1) {
+    int is_running = 1;
+    while (is_running) {
         
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
-                SDL_DestroyWindow(window);
-                SDL_Quit();
-                return 0;
+                is_running = 0;
+                break;
+            }
+            if (event.type == SDL_KEYUP) {
+                if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+                    is_running = 0;
+                    break;
+                }
             }
         }
 
         for (int y = 0; y < viewport_height; y++) {
             for (int x = 0; x < viewport_width; x++) {
-                SDL_Rect src = {0, 0, 32, 32};
+                SDL_Rect src = {0, 192, 32, 32};
                 SDL_Rect dst = {x * tile_size, y * tile_size, tile_size, tile_size};
                 char tile_type = cave_1[viewport_y + y][viewport_x + x];                
                 if (tile_type == 'r') {
@@ -89,6 +95,9 @@ int main()
                     src.y = 224;        
                 } else if (tile_type == 'w') {
                     src.x = 96;
+                    src.y = 192;
+                } else if (tile_type == 'W') {
+                    src.x = 32;
                     src.y = 192;
                 } else if (tile_type == '.') {
                     src.x = 32;
