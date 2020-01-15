@@ -102,6 +102,9 @@ int main()
                 } else if (tile_type == '.') {
                     src.x = 32;
                     src.y = 224;
+                } else if (tile_type == 'E') {
+                    src.x = 0;
+                    src.y = 0;
                 }
                 SDL_RenderCopy(renderer, texture, &src, &dst);
             }
@@ -114,12 +117,12 @@ int main()
         
         SDL_RenderPresent(renderer);
 
-        {
-            u64 now = SDL_GetPerformanceCounter();
-            double elapsed_ms = (double)(now - start) * 1000 / frequency; 
-            start = now;
-            printf("MS %.3lf \n", elapsed_ms);
-        }
+        // {
+        //     u64 now = SDL_GetPerformanceCounter();
+        //     double elapsed_ms = (double)(now - start) * 1000 / frequency; 
+        //     start = now;
+        //     printf("MS %.3lf \n", elapsed_ms);
+        // }
 
         num_loops++;
     }
