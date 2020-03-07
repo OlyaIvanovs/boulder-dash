@@ -12,7 +12,7 @@ typedef uint64_t u64;
 
 int main()
 {
-    SDL_Init(SDL_INIT_VIDEO & SDL_INIT_JOYSTICK);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
 
     SDL_Window *window = SDL_CreateWindow(
         "Boulder-Dash",
@@ -58,12 +58,16 @@ int main()
     int viewport_y = 0;
     int viewport_width = 30;
     int tile_size = window_width / viewport_width;
-    int window_xoffset = (window_width % viewport_width) / 2;
+    int window_xoffset = (window_width % tile_size) / 2;  // to adjust tiles 
     int viewport_height = window_height / tile_size;
-    int window_yoffset = (window_height % viewport_height) / 2;
+    int window_yoffset = (window_height % tile_size) / 2;
+    printf("height %d \n", viewport_height);
+    printf("window height %d \n", window_height);
+    printf("tile_size %d\n", tile_size);
+    printf("window y offset %d\n", window_yoffset);
 
     int num_loops = 0;
-    u64 start = SDL_GetPerformanceCounter();
+    u64 start = SDL_GetPerformanceCounter(); 
     double frequency = (double)SDL_GetPerformanceFrequency();
 
     SDL_GL_SetSwapInterval(1);
@@ -88,7 +92,6 @@ int main()
         for (int y = 0; y < viewport_height; y++) {
             for (int x = 0; x < viewport_width; x++) {
                 SDL_Rect src = {0, 192, 32, 32};
-                SDL_Rect dst = {x * tile_size, y * tile_size, tile_size, tile_size};
                 char tile_type = cave_1[viewport_y + y][viewport_x + x];                
                 if (tile_type == 'r') {
                     src.x = 0;
@@ -106,6 +109,7 @@ int main()
                     src.x = 0;
                     src.y = 0;
                 }
+                SDL_Rect dst = {window_xoffset + x * tile_size, window_yoffset + y * tile_size, tile_size, tile_size};
                 SDL_RenderCopy(renderer, texture, &src, &dst);
             }
         }
