@@ -62,10 +62,10 @@ int main()
     int window_xoffset = (window_width % tile_size) / 2;  // to adjust tiles 
     int viewport_height = window_height / tile_size;
     int window_yoffset = (window_height % tile_size) / 2;
-    printf("height %d \n", viewport_height);
-    printf("window height %d \n", window_height);
-    printf("tile_size %d\n", tile_size);
-    printf("window y offset %d\n", window_yoffset);
+    // printf("height %d \n", viewport_height);
+    // printf("window height %d \n", window_height);
+    // printf("tile_size %d\n", tile_size);
+    // printf("window y offset %d\n", window_yoffset);
 
     int num_loops = 0;
     u64 start = SDL_GetPerformanceCounter(); 
@@ -75,6 +75,16 @@ int main()
     char level[LEVEL_HEIGHT][LEVEL_WIDTH];
 
     memcpy (level, cave_1, LEVEL_HEIGHT*LEVEL_WIDTH);
+    int player_x, player_y;
+    for (int y = 0; y < LEVEL_HEIGHT; ++y) {
+        for (int x = 0; x < LEVEL_WIDTH; ++x) {
+            if (level[y][x] == 'E') {
+                player_x = x;
+                player_y = y;
+                break;
+            }
+        }
+    }
 
     int is_running = 1;
     while (is_running) {
@@ -89,6 +99,20 @@ int main()
                 if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
                     is_running = 0;
                     break;
+                }
+            }
+            if (event.type == SDL_KEYDOWN) {
+                if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
+                    level[player_y][player_x] = ' ';
+                    player_x += 1;
+                    level[player_y][player_x] = 'E';
+
+                }
+                if (event.key.keysym.scancode == SDL_SCANCODE_LEFT) {
+                    level[player_y][player_x] = ' ';
+                    player_x -= 1;
+                    level[player_y][player_x] = 'E';
+
                 }
             }
         }
@@ -116,12 +140,8 @@ int main()
                 SDL_Rect dst = {window_xoffset + x * tile_size, window_yoffset + y * tile_size, tile_size, tile_size};
                 SDL_RenderCopy(renderer, texture, &src, &dst);
             }
+
         }
-        // result = SDL_RenderCopy(renderer, texture, &src, &dst);
-        // if (result != 0) {
-        //     printf("Couldn't renders texture: %s\n", SDL_GetError());
-        //     return 1;
-        // }
         
         SDL_RenderPresent(renderer);
 
