@@ -1,6 +1,7 @@
 #include <SDL2/SDL.h>
 #include <stdio.h>
 #include <stdint.h>
+#include <string.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
@@ -71,6 +72,9 @@ int main()
     double frequency = (double)SDL_GetPerformanceFrequency();
 
     SDL_GL_SetSwapInterval(1);
+    char level[LEVEL_HEIGHT][LEVEL_WIDTH];
+
+    memcpy (level, cave_1, LEVEL_HEIGHT*LEVEL_WIDTH);
 
     int is_running = 1;
     while (is_running) {
@@ -92,7 +96,7 @@ int main()
         for (int y = 0; y < viewport_height; y++) {
             for (int x = 0; x < viewport_width; x++) {
                 SDL_Rect src = {0, 192, 32, 32};
-                char tile_type = cave_1[viewport_y + y][viewport_x + x];                
+                char tile_type = level[viewport_y + y][viewport_x + x];                
                 if (tile_type == 'r') {
                     src.x = 0;
                     src.y = 224;        
