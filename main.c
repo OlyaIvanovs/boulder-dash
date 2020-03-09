@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #define STBI_ONLY_PNG
@@ -10,6 +11,13 @@
 #include "levels.h"
 
 typedef uint64_t u64;
+
+typedef struct {
+    bool right;
+    bool left;
+    bool up;
+    bool down;
+} Input;
 
 int main()
 {
@@ -86,6 +94,7 @@ int main()
         }
     }
 
+    Input input = {false, false, false, false};
     int is_running = 1;
     while (is_running) {
         
@@ -103,18 +112,34 @@ int main()
             }
             if (event.type == SDL_KEYDOWN) {
                 if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
-                    level[player_y][player_x] = ' ';
-                    player_x += 1;
-                    level[player_y][player_x] = 'E';
-
+                    input.right = true;
                 }
                 if (event.key.keysym.scancode == SDL_SCANCODE_LEFT) {
-                    level[player_y][player_x] = ' ';
-                    player_x -= 1;
-                    level[player_y][player_x] = 'E';
-
+                    input.left = true;
                 }
             }
+            
+            if (event.type == SDL_KEYUP) {
+                if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
+                    input.right = false;
+                }
+                if (event.key.keysym.scancode == SDL_SCANCODE_LEFT) {
+                    input.left = false;
+                }
+            }
+        }
+
+        if (input.right) {
+            level[player_y][player_x] = ' ';
+            player_x += 1;
+            level[player_y][player_x] = 'E';
+
+        }
+        if (input.left          ) {
+            level[player_y][player_x] = ' ';
+            player_x -= 1;
+            level[player_y][player_x] = 'E';
+
         }
 
         for (int y = 0; y < viewport_height; y++) {
