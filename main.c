@@ -94,6 +94,7 @@ int main()
         }
     }
 
+    u64 last_move_time = start;
     Input input = {false, false, false, false};
     int is_running = 1;
     while (is_running) {
@@ -129,18 +130,21 @@ int main()
             }
         }
 
-        if (input.right) {
-            level[player_y][player_x] = ' ';
-            player_x += 1;
-            level[player_y][player_x] = 'E';
-
+        double time_since_last_move = (double)(SDL_GetPerformanceCounter() - last_move_time) / frequency ;
+        if (time_since_last_move > 0.1) {
+            if (input.right) {
+                level[player_y][player_x] = ' ';
+                player_x += 1;
+                level[player_y][player_x] = 'E';
+                last_move_time = SDL_GetPerformanceCounter();
+            } else if (input.left  ) {
+                level[player_y][player_x] = ' ';
+                player_x -= 1;
+                level[player_y][player_x] = 'E';
+                last_move_time = SDL_GetPerformanceCounter();
+            }
         }
-        if (input.left          ) {
-            level[player_y][player_x] = ' ';
-            player_x -= 1;
-            level[player_y][player_x] = 'E';
 
-        }
 
         for (int y = 0; y < viewport_height; y++) {
             for (int x = 0; x < viewport_width; x++) {
