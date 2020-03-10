@@ -118,6 +118,12 @@ int main()
                 if (event.key.keysym.scancode == SDL_SCANCODE_LEFT) {
                     input.left = true;
                 }
+                if (event.key.keysym.scancode == SDL_SCANCODE_UP) {
+                    input.up = true;
+                }
+                if (event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
+                    input.down = true;
+                }
             }
             
             if (event.type == SDL_KEYUP) {
@@ -126,6 +132,12 @@ int main()
                 }
                 if (event.key.keysym.scancode == SDL_SCANCODE_LEFT) {
                     input.left = false;
+                }
+                if (event.key.keysym.scancode == SDL_SCANCODE_UP) {
+                    input.up = false;
+                }
+                if (event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
+                    input.down = false;
                 }
             }
         }
@@ -137,9 +149,19 @@ int main()
                 player_x += 1;
                 level[player_y][player_x] = 'E';
                 last_move_time = SDL_GetPerformanceCounter();
-            } else if (input.left  ) {
+            } else if (input.left) {
                 level[player_y][player_x] = ' ';
                 player_x -= 1;
+                level[player_y][player_x] = 'E';
+                last_move_time = SDL_GetPerformanceCounter();
+            } else if (input.up) {
+                level[player_y][player_x] = ' ';
+                player_y -= 1;
+                level[player_y][player_x] = 'E';
+                last_move_time = SDL_GetPerformanceCounter();
+            } else if (input.down) {
+                level[player_y][player_x] = ' ';
+                player_y += 1;
                 level[player_y][player_x] = 'E';
                 last_move_time = SDL_GetPerformanceCounter();
             }
