@@ -19,6 +19,17 @@ typedef struct {
     bool down;
 } Input;
 
+bool can_move(char *level, int x, int y) {
+    if (x < 0 || x >= LEVEL_WIDTH || y < 0 || y >= LEVEL_HEIGHT) {
+        return false;
+    }
+    char tile_type = level[y * LEVEL_WIDTH + x];
+    if (tile_type == ' ' || tile_type == '.' || tile_type == '_') {
+        return true;
+    }
+    return false;
+}
+
 int main()
 {
     SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
@@ -70,6 +81,9 @@ int main()
     int window_xoffset = (window_width % tile_size) / 2;  // to adjust tiles 
     int viewport_height = window_height / tile_size;
     int window_yoffset = (window_height % tile_size) / 2;
+
+    int viewport_x_max = LEVEL_WIDTH - viewport_width;
+    int viewport_y_max = LEVEL_HEIGHT - viewport_height;
     // printf("height %d \n", viewport_height);
     // printf("window height %d \n", window_height);
     // printf("tile_size %d\n", tile_size);
@@ -144,26 +158,52 @@ int main()
 
         double time_since_last_move = (double)(SDL_GetPerformanceCounter() - last_move_time) / frequency ;
         if (time_since_last_move > 0.1) {
-            if (input.right) {
+            if (input.right && can_move(&level[0][0], player_x + 1, player_y)) {
                 level[player_y][player_x] = ' ';
                 player_x += 1;
                 level[player_y][player_x] = 'E';
                 last_move_time = SDL_GetPerformanceCounter();
-            } else if (input.left) {
+            } else if (input.left && can_move(&level[0][0], player_x - 1, player_y)) {
                 level[player_y][player_x] = ' ';
                 player_x -= 1;
                 level[player_y][player_x] = 'E';
                 last_move_time = SDL_GetPerformanceCounter();
-            } else if (input.up) {
+            } else if (input.up && can_move(&level[0][0], player_x, player_y - 1)) {
                 level[player_y][player_x] = ' ';
                 player_y -= 1;
                 level[player_y][player_x] = 'E';
                 last_move_time = SDL_GetPerformanceCounter();
-            } else if (input.down) {
+            } else if (input.down && can_move(&level[0][0], player_x, player_y + 1)) {
                 level[player_y][player_x] = ' ';
                 player_y += 1;
                 level[player_y][player_x] = 'E';
                 last_move_time = SDL_GetPerformanceCounter();
+            }
+            int rel_player_x = player_x - viewport_x;
+            if (rel_player_x >= 20) {
+                viewport_x += rel_player_x - 20;
+                if (viewport_x > viewport_x_max) {
+                    viewport_x = viewport_x_max;
+                } 
+            }
+            if (rel_player_x <= 9) {
+                viewport_x -= 9 - rel_player_x;
+                if (viewport_x < 0) {
+                    viewport_x = 0;
+                } 
+            }
+            int rel_player_y = player_y - viewport_y;
+            if (rel_player_y >= 13) {
+                viewport_y += rel_player_y - 13;
+                if (viewport_y > viewport_y_max) {
+                    viewport_y = viewport_y_max;
+                } 
+            }
+            if (rel_player_y <= 6) {
+                viewport_y -= 6 - rel_player_y;
+                if (viewport_y < 0) {
+                    viewport_y = 0;
+                } 
             }
         }
 
