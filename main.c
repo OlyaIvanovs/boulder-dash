@@ -227,6 +227,9 @@ int main()
                 } else if (tile_type == 'E') {
                     src.x = 0;
                     src.y = 0;
+                } else if (tile_type == 'd') {
+                    src.x = 0;
+                    src.y = 320;
                 }
                 SDL_Rect dst = {window_xoffset + x * tile_size, window_yoffset + y * tile_size, tile_size, tile_size};
                 SDL_RenderCopy(renderer, texture, &src, &dst);
