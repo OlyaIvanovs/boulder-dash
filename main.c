@@ -12,6 +12,8 @@
 
 typedef uint64_t u64;
 
+static double gPerformanceFrequency; 
+
 typedef struct {
     bool right;
     bool left;
@@ -28,6 +30,14 @@ bool can_move(char *level, int x, int y) {
         return true;
     }
     return false;
+}
+
+u64 time_now() {
+    return SDL_GetPerformanceCounter();
+}
+
+double seconds_since(u64 timestamp) {
+    return (double)(time_now() - timestamp) / gPerformanceFrequency;
 }
 
 int main()
@@ -90,8 +100,8 @@ int main()
     // printf("window y offset %d\n", window_yoffset);
 
     int num_loops = 0;
-    u64 start = SDL_GetPerformanceCounter(); 
-    double frequency = (double)SDL_GetPerformanceFrequency();
+    u64 start = time_now(); 
+    gPerformanceFrequency = (double)SDL_GetPerformanceFrequency();
 
     SDL_GL_SetSwapInterval(1);
     char level[LEVEL_HEIGHT][LEVEL_WIDTH];
@@ -108,7 +118,10 @@ int main()
         }
     }
 
-    u64 last_move_time = start;
+    u64 player_last_move_time = start;   
+    u64 drop_last_time = start;   
+    const double kPlayerDelay = 0.1;
+    const double kDropDelay = 0.15;
     Input input = {false, false, false, false};
     int is_running = 1;
     while (is_running) {
@@ -156,28 +169,27 @@ int main()
             }
         }
 
-        double time_since_last_move = (double)(SDL_GetPerformanceCounter() - last_move_time) / frequency ;
-        if (time_since_last_move > 0.1) {
+        if (seconds_since(player_last_move_time) > kPlayerDelay) {
             if (input.right && can_move(&level[0][0], player_x + 1, player_y)) {
-                level[player_y][player_x] = ' ';
+                level[player_y][player_x] = '_';
                 player_x += 1;
                 level[player_y][player_x] = 'E';
-                last_move_time = SDL_GetPerformanceCounter();
+                player_last_move_time = time_now();
             } else if (input.left && can_move(&level[0][0], player_x - 1, player_y)) {
-                level[player_y][player_x] = ' ';
+                level[player_y][player_x] = '_';
                 player_x -= 1;
                 level[player_y][player_x] = 'E';
-                last_move_time = SDL_GetPerformanceCounter();
+                player_last_move_time = time_now();
             } else if (input.up && can_move(&level[0][0], player_x, player_y - 1)) {
-                level[player_y][player_x] = ' ';
+                level[player_y][player_x] = '_';
                 player_y -= 1;
                 level[player_y][player_x] = 'E';
-                last_move_time = SDL_GetPerformanceCounter();
+                player_last_move_time = time_now();
             } else if (input.down && can_move(&level[0][0], player_x, player_y + 1)) {
-                level[player_y][player_x] = ' ';
+                level[player_y][player_x] = '_';
                 player_y += 1;
                 level[player_y][player_x] = 'E';
-                last_move_time = SDL_GetPerformanceCounter();
+                player_last_move_time = time_now();
             }
             int rel_player_x = player_x - viewport_x;
             if (rel_player_x >= 20) {
@@ -207,6 +219,19 @@ int main()
             }
         }
 
+        if (seconds_since(drop_last_time) > kDropDelay) {
+            drop_last_time = time_now();
+            for (int y = LEVEL_HEIGHT - 2; y >= 0; y--) {
+                for (int x = 0; x < LEVEL_WIDTH; x++) {
+                    if (level[y][x] == 'r') {
+                        if (level[y+1][x] == '_') {
+                            level[y][x] = '_';
+                            level[y+1][x] = 'r';
+                        }
+                    }
+                }
+            }
+        }
 
         for (int y = 0; y < viewport_height; y++) {
             for (int x = 0; x < viewport_width; x++) {
@@ -240,7 +265,7 @@ int main()
         SDL_RenderPresent(renderer);
 
         // {
-        //     u64 now = SDL_GetPerformanceCounter();
+        //     u64 now = time_now();
         //     double elapsed_ms = (double)(now - start) * 1000 / frequency; 
         //     start = now;
         //     printf("MS %.3lf \n", elapsed_ms);
