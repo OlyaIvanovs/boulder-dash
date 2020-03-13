@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <assert.h>
 #include <stdbool.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -20,6 +21,11 @@ typedef struct {
     bool up;
     bool down;
 } Input;
+
+typedef struct {
+    int x;
+    int y;
+} Rock;
 
 bool can_move(char *level, int x, int y) {
     if (x < 0 || x >= LEVEL_WIDTH || y < 0 || y >= LEVEL_HEIGHT) {
@@ -104,16 +110,25 @@ int main()
     gPerformanceFrequency = (double)SDL_GetPerformanceFrequency();
 
     SDL_GL_SetSwapInterval(1);
-    char level[LEVEL_HEIGHT][LEVEL_WIDTH];
 
+    char level[LEVEL_HEIGHT][LEVEL_WIDTH];
     memcpy (level, cave_1, LEVEL_HEIGHT*LEVEL_WIDTH);
+
+    const int kMaxRocks = LEVEL_HEIGHT * LEVEL_WIDTH / 3; 
+    Rock rocks[kMaxRocks]; // allocate 1/3 of the level size for rocks  
+    int num_rocks = 0;
+
     int player_x, player_y;
     for (int y = 0; y < LEVEL_HEIGHT; ++y) {
         for (int x = 0; x < LEVEL_WIDTH; ++x) {
             if (level[y][x] == 'E') {
                 player_x = x;
                 player_y = y;
-                break;
+            }
+            if (level[y][x] == 'r') {
+                rocks[num_rocks].x = x;
+                rocks[num_rocks].y = y;
+                num_rocks++;
             }
         }
     }
@@ -219,16 +234,17 @@ int main()
             }
         }
 
+        // Drop rocks
         if (seconds_since(drop_last_time) > kDropDelay) {
             drop_last_time = time_now();
-            for (int y = LEVEL_HEIGHT - 2; y >= 0; y--) {
-                for (int x = 0; x < LEVEL_WIDTH; x++) {
-                    if (level[y][x] == 'r') {
-                        if (level[y+1][x] == '_') {
-                            level[y][x] = '_';
-                            level[y+1][x] = 'r';
-                        }
-                    }
+            for (int i = 0; i < num_rocks; i++) {
+                int x = rocks[i].x;
+                int y = rocks[i].y;
+                assert(level[y][x] == 'r');
+                if (level[y + 1][x] == '_') {
+                    level[y][x] = '_';
+                    level[y + 1][x] = 'r';
+                    rocks[i].y += 1;
                 }
             }
         }
