@@ -240,11 +240,31 @@ int main()
             for (int i = 0; i < num_rocks; i++) {
                 int x = rocks[i].x;
                 int y = rocks[i].y;
+                char tile_under_rock = level[y + 1][x];
                 assert(level[y][x] == 'r');
-                if (level[y + 1][x] == '_') {
+                if (tile_under_rock == '_') {
+                    // Drop down
                     level[y][x] = '_';
                     level[y + 1][x] = 'r';
                     rocks[i].y += 1;
+                    continue;
+                }
+                if (tile_under_rock == 'r' || tile_under_rock == 'd') {
+                    if (level[y][x - 1] == '_' && level[y + 1][x - 1] == '_') { 
+                        // Drop left
+                        level[y][x] = '_';
+                        level[y][x - 1] = 'r';
+                        rocks[i].x -= 1;
+                        continue;
+                    }
+                    if (level[y][x + 1] == '_' && level[y + 1][x + 1] == '_') { 
+                        // Drop right
+                        level[y][x] = '_';
+                        level[y][x + 1] = 'r';
+                        rocks[i].x += 1;
+                        continue;
+                    }
+                
                 }
             }
         }
