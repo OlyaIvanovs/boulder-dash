@@ -27,6 +27,34 @@ typedef struct {
     int y;
 } Rock;
 
+typedef struct {
+    int x;
+    int y;
+} v2;
+
+typedef struct {
+    u64 start_time;
+    int num_frames;
+    v2 start_frame;
+    int fps;
+} Animation;
+
+u64 time_now() {
+    return SDL_GetPerformanceCounter();
+}
+
+double seconds_since(u64 timestamp) {
+    return (double)(time_now() - timestamp) / gPerformanceFrequency;
+}
+
+v2 get_frame(Animation *animation) {
+    v2 result;
+    int frame_index = (int)(seconds_since(animation->start_time) * animation->fps) % animation->num_frames;
+    result.x = animation->start_frame.x + frame_index * 32;
+    result.y = animation->start_frame.y;
+    return result;
+}
+
 bool can_move(char *level, int x, int y) {
     if (x < 0 || x >= LEVEL_WIDTH || y < 0 || y >= LEVEL_HEIGHT) {
         return false;
@@ -36,14 +64,6 @@ bool can_move(char *level, int x, int y) {
         return true;
     }
     return false;
-}
-
-u64 time_now() {
-    return SDL_GetPerformanceCounter();
-}
-
-double seconds_since(u64 timestamp) {
-    return (double)(time_now() - timestamp) / gPerformanceFrequency;
 }
 
 int main()
@@ -111,6 +131,36 @@ int main()
 
     SDL_GL_SetSwapInterval(1);
 
+    // Init animations
+    Animation anim_diamond = {};
+    anim_diamond.start_time = start;
+    anim_diamond.num_frames = 8;
+    anim_diamond.fps = 15;
+    anim_diamond.start_frame.x = 0;
+    anim_diamond.start_frame.y = 320;
+
+    Animation anim_idle1 = {};
+    anim_idle1.start_time = start;
+    anim_idle1.num_frames = 8;
+    anim_idle1.fps = 15;
+    anim_idle1.start_frame.x = 0;
+    anim_idle1.start_frame.y = 33;
+
+    Animation anim_go_left = {};
+    anim_go_left.start_time = start;
+    anim_go_left.num_frames = 8;
+    anim_go_left.fps = 15;
+    anim_go_left.start_frame.x = 0;
+    anim_go_left.start_frame.y = 128;
+
+    Animation anim_go_right = {};
+    anim_go_right.start_time = start;
+    anim_go_right.num_frames = 8;
+    anim_go_right.fps = 15;
+    anim_go_right.start_frame.x = 0;
+    anim_go_right.start_frame.y = 160;
+
+    // Init level
     char level[LEVEL_HEIGHT][LEVEL_WIDTH];
     memcpy (level, cave_1, LEVEL_HEIGHT*LEVEL_WIDTH);
 
@@ -138,8 +188,12 @@ int main()
     const double kPlayerDelay = 0.1;
     const double kDropDelay = 0.15;
     Input input = {false, false, false, false};
+
+    Animation *player_animation = &anim_idle1;
+
     int is_running = 1;
     while (is_running) {
+        double frame_time = seconds_since(start); // for animation
         
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
@@ -269,6 +323,16 @@ int main()
             }
         }
 
+         // Choose player animation
+        if (input.right) {
+            player_animation = &anim_go_right;
+        } else if (input.left) {
+            player_animation = &anim_go_left;
+        } else {
+            player_animation = &anim_idle1;
+        }
+
+        // Draw level
         for (int y = 0; y < viewport_height; y++) {
             for (int x = 0; x < viewport_width; x++) {
                 SDL_Rect src = {0, 192, 32, 32};
@@ -286,11 +350,13 @@ int main()
                     src.x = 32;
                     src.y = 224;
                 } else if (tile_type == 'E') {
-                    src.x = 0;
-                    src.y = 0;
+                    v2 frame = get_frame(player_animation);
+                    src.x = frame.x;
+                    src.y = frame.y;
                 } else if (tile_type == 'd') {
-                    src.x = 0;
-                    src.y = 320;
+                    v2 frame = get_frame(&anim_diamond);
+                    src.x = frame.x;
+                    src.y = frame.y;
                 }
                 SDL_Rect dst = {window_xoffset + x * tile_size, window_yoffset + y * tile_size, tile_size, tile_size};
                 SDL_RenderCopy(renderer, texture, &src, &dst);
@@ -302,7 +368,7 @@ int main()
 
         // {
         //     u64 now = time_now();
-        //     double elapsed_ms = (double)(now - start) * 1000 / frequency; 
+        //     double elapsed_ms = (double)(now - start) * 1000 / gPerformanceFrequency; 
         //     start = now;
         //     printf("MS %.3lf \n", elapsed_ms);
         // }
