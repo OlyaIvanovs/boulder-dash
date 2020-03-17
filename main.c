@@ -11,6 +11,8 @@
 
 #include "levels.h"
 
+#define COUNT(arr) (sizeof(arr)/sizeof(*arr))
+
 typedef uint64_t u64;
 
 static double gPerformanceFrequency; 
@@ -25,12 +27,12 @@ typedef struct {
 typedef struct {
     int x;
     int y;
-} Rock;
+} v2;
 
 typedef struct {
-    int x;
-    int y;
-} v2;
+    int num;
+    v2 objects[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
+} Objects;
 
 typedef struct {
     u64 start_time;
@@ -164,10 +166,9 @@ int main()
     char level[LEVEL_HEIGHT][LEVEL_WIDTH];
     memcpy (level, cave_1, LEVEL_HEIGHT*LEVEL_WIDTH);
 
-    const int kMaxRocks = LEVEL_HEIGHT * LEVEL_WIDTH / 3; 
-    Rock rocks[kMaxRocks]; // allocate 1/3 of the level size for rocks  
-    int num_rocks = 0;
-
+    Objects rocks = {};
+    Objects diamonds = {};
+    
     int player_x, player_y;
     for (int y = 0; y < LEVEL_HEIGHT; ++y) {
         for (int x = 0; x < LEVEL_WIDTH; ++x) {
@@ -176,10 +177,16 @@ int main()
                 player_y = y;
             }
             if (level[y][x] == 'r') {
-                rocks[num_rocks].x = x;
-                rocks[num_rocks].y = y;
-                num_rocks++;
+                rocks.objects[rocks.num].x = x;
+                rocks.objects[rocks.num].y = y;
+                rocks.num++;
             }
+            if (level[y][x] == 'd') {
+                diamonds.objects[diamonds.num].x = x;
+                diamonds.objects[diamonds.num].y = y;
+                diamonds.num++;
+            }
+
         }
     }
 
@@ -291,16 +298,16 @@ int main()
         // Drop rocks
         if (seconds_since(drop_last_time) > kDropDelay) {
             drop_last_time = time_now();
-            for (int i = 0; i < num_rocks; i++) {
-                int x = rocks[i].x;
-                int y = rocks[i].y;
+            for (int i = 0; i < rocks.num; i++) {
+                int x = rocks.objects[i].x;
+                int y = rocks.objects[i].y;
                 char tile_under_rock = level[y + 1][x];
                 assert(level[y][x] == 'r');
                 if (tile_under_rock == '_') {
                     // Drop down
                     level[y][x] = '_';
                     level[y + 1][x] = 'r';
-                    rocks[i].y += 1;
+                    rocks.objects[i].y += 1;
                     continue;
                 }
                 if (tile_under_rock == 'r' || tile_under_rock == 'd') {
@@ -308,20 +315,23 @@ int main()
                         // Drop left
                         level[y][x] = '_';
                         level[y][x - 1] = 'r';
-                        rocks[i].x -= 1;
+                        rocks.objects[i].x -= 1;
                         continue;
                     }
                     if (level[y][x + 1] == '_' && level[y + 1][x + 1] == '_') { 
                         // Drop right
                         level[y][x] = '_';
                         level[y][x + 1] = 'r';
-                        rocks[i].x += 1;
+                        rocks.objects[i].x += 1;
                         continue;
                     }
                 
                 }
             }
         }
+
+        // Drop diamonds
+        
 
          // Choose player animation
         if (input.right) {
