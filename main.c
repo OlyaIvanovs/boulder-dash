@@ -13,6 +13,8 @@
 
 #define COUNT(arr) (sizeof(arr)/sizeof(*arr))
 
+typedef char Level[LEVEL_HEIGHT][LEVEL_WIDTH];
+
 typedef uint64_t u64;
 
 static double gPerformanceFrequency; 
@@ -57,15 +59,47 @@ v2 get_frame(Animation *animation) {
     return result;
 }
 
-bool can_move(char *level, int x, int y) {
+bool can_move(Level level, int x, int y) {
     if (x < 0 || x >= LEVEL_WIDTH || y < 0 || y >= LEVEL_HEIGHT) {
         return false;
     }
-    char tile_type = level[y * LEVEL_WIDTH + x];
+    char tile_type = level[y][x];
     if (tile_type == ' ' || tile_type == '.' || tile_type == '_') {
         return true;
     }
     return false;
+}
+
+void drop_objects(Level level, Objects *objects, char obj_sym) {
+    for (int i = 0; i < objects->num; i++) {
+        int x = objects->objects[i].x;
+        int y = objects->objects[i].y;
+        char tile_under = level[y + 1][x];
+        assert(level[y][x] == obj_sym);
+        if (tile_under == '_') {
+            // Drop down
+            level[y][x] = '_';
+            level[y + 1][x] = obj_sym;
+            objects->objects[i].y += 1;
+            continue;
+        }
+        if (tile_under == 'r' || tile_under == 'd') {
+            if (level[y][x - 1] == '_' && level[y + 1][x - 1] == '_') { 
+                // Drop left
+                level[y][x] = '_';
+                level[y][x - 1] = obj_sym;
+                objects->objects[i].x -= 1;
+                continue;
+            }
+            if (level[y][x + 1] == '_' && level[y + 1][x + 1] == '_') { 
+                // Drop right
+                level[y][x] = '_';
+                level[y][x + 1] = obj_sym;
+                objects->objects[i].x += 1;
+                continue;
+            }    
+        }
+    }
 }
 
 int main()
@@ -122,10 +156,6 @@ int main()
 
     int viewport_x_max = LEVEL_WIDTH - viewport_width;
     int viewport_y_max = LEVEL_HEIGHT - viewport_height;
-    // printf("height %d \n", viewport_height);
-    // printf("window height %d \n", window_height);
-    // printf("tile_size %d\n", tile_size);
-    // printf("window y offset %d\n", window_yoffset);
 
     int num_loops = 0;
     u64 start = time_now(); 
@@ -180,11 +210,14 @@ int main()
                 rocks.objects[rocks.num].x = x;
                 rocks.objects[rocks.num].y = y;
                 rocks.num++;
+                assert(rocks.num < COUNT(rocks.objects));
             }
             if (level[y][x] == 'd') {
                 diamonds.objects[diamonds.num].x = x;
                 diamonds.objects[diamonds.num].y = y;
                 diamonds.num++;
+                assert(diamonds.num < COUNT(diamonds.objects));
+
             }
 
         }
@@ -246,22 +279,22 @@ int main()
         }
 
         if (seconds_since(player_last_move_time) > kPlayerDelay) {
-            if (input.right && can_move(&level[0][0], player_x + 1, player_y)) {
+            if (input.right && can_move(level, player_x + 1, player_y)) {
                 level[player_y][player_x] = '_';
                 player_x += 1;
                 level[player_y][player_x] = 'E';
                 player_last_move_time = time_now();
-            } else if (input.left && can_move(&level[0][0], player_x - 1, player_y)) {
+            } else if (input.left && can_move(level, player_x - 1, player_y)) {
                 level[player_y][player_x] = '_';
                 player_x -= 1;
                 level[player_y][player_x] = 'E';
                 player_last_move_time = time_now();
-            } else if (input.up && can_move(&level[0][0], player_x, player_y - 1)) {
+            } else if (input.up && can_move(level, player_x, player_y - 1)) {
                 level[player_y][player_x] = '_';
                 player_y -= 1;
                 level[player_y][player_x] = 'E';
                 player_last_move_time = time_now();
-            } else if (input.down && can_move(&level[0][0], player_x, player_y + 1)) {
+            } else if (input.down && can_move(level, player_x, player_y + 1)) {
                 level[player_y][player_x] = '_';
                 player_y += 1;
                 level[player_y][player_x] = 'E';
@@ -298,40 +331,9 @@ int main()
         // Drop rocks
         if (seconds_since(drop_last_time) > kDropDelay) {
             drop_last_time = time_now();
-            for (int i = 0; i < rocks.num; i++) {
-                int x = rocks.objects[i].x;
-                int y = rocks.objects[i].y;
-                char tile_under_rock = level[y + 1][x];
-                assert(level[y][x] == 'r');
-                if (tile_under_rock == '_') {
-                    // Drop down
-                    level[y][x] = '_';
-                    level[y + 1][x] = 'r';
-                    rocks.objects[i].y += 1;
-                    continue;
-                }
-                if (tile_under_rock == 'r' || tile_under_rock == 'd') {
-                    if (level[y][x - 1] == '_' && level[y + 1][x - 1] == '_') { 
-                        // Drop left
-                        level[y][x] = '_';
-                        level[y][x - 1] = 'r';
-                        rocks.objects[i].x -= 1;
-                        continue;
-                    }
-                    if (level[y][x + 1] == '_' && level[y + 1][x + 1] == '_') { 
-                        // Drop right
-                        level[y][x] = '_';
-                        level[y][x + 1] = 'r';
-                        rocks.objects[i].x += 1;
-                        continue;
-                    }
-                
-                }
-            }
+            drop_objects(level, &rocks, 'r');
+            drop_objects(level, &diamonds, 'd');
         }
-
-        // Drop diamonds
-        
 
          // Choose player animation
         if (input.right) {
