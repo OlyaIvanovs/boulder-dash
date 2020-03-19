@@ -59,12 +59,12 @@ v2 get_frame(Animation *animation) {
     return result;
 }
 
-bool can_move(Level level, int x, int y) {
-    if (x < 0 || x >= LEVEL_WIDTH || y < 0 || y >= LEVEL_HEIGHT) {
+bool can_move(Level level, v2 pos) {
+    if (pos.x < 0 || pos.x >= LEVEL_WIDTH || pos.y < 0 || pos.y >= LEVEL_HEIGHT) {
         return false;
     }
-    char tile_type = level[y][x];
-    if (tile_type == ' ' || tile_type == '.' || tile_type == '_') {
+    char tile_type = level[pos.y][pos.x];
+    if (tile_type == ' ' || tile_type == '.' || tile_type == '_' || tile_type == 'd') {
         return true;
     }
     return false;
@@ -75,7 +75,7 @@ void drop_objects(Level level, Objects *objects, char obj_sym) {
         int x = objects->objects[i].x;
         int y = objects->objects[i].y;
         char tile_under = level[y + 1][x];
-        assert(level[y][x] == obj_sym);
+        assert(level[y][x] ==  obj_sym);
         if (tile_under == '_') {
             // Drop down
             level[y][x] = '_';
@@ -98,6 +98,18 @@ void drop_objects(Level level, Objects *objects, char obj_sym) {
                 objects->objects[i].x += 1;
                 continue;
             }    
+        }
+    }
+}
+
+void collect_diamond(Objects *diamonds, v2 pos) {
+    for (int i = 0; i < diamonds->num; i++) {
+        if (diamonds->objects[i].x == pos.x && diamonds->objects[i].y == pos.y) {
+            v2 *pos = &diamonds->objects[i];
+            v2 *pos_lst = &diamonds->objects[diamonds->num-1];
+            pos->x = pos_lst->x;
+            pos->y = pos_lst->y;
+            diamonds->num -= 1;
         }
     }
 }
@@ -198,13 +210,14 @@ int main()
 
     Objects rocks = {};
     Objects diamonds = {};
-    
-    int player_x, player_y;
+    int diamonds_collected = 0;
+    v2 player_pos = {};
+
     for (int y = 0; y < LEVEL_HEIGHT; ++y) {
         for (int x = 0; x < LEVEL_WIDTH; ++x) {
             if (level[y][x] == 'E') {
-                player_x = x;
-                player_y = y;
+                player_pos.x = x;
+                player_pos.y = y;
             }
             if (level[y][x] == 'r') {
                 rocks.objects[rocks.num].x = x;
@@ -217,9 +230,7 @@ int main()
                 diamonds.objects[diamonds.num].y = y;
                 diamonds.num++;
                 assert(diamonds.num < COUNT(diamonds.objects));
-
             }
-
         }
     }
 
@@ -278,53 +289,60 @@ int main()
             }
         }
 
+        // Move player
         if (seconds_since(player_last_move_time) > kPlayerDelay) {
-            if (input.right && can_move(level, player_x + 1, player_y)) {
-                level[player_y][player_x] = '_';
-                player_x += 1;
-                level[player_y][player_x] = 'E';
-                player_last_move_time = time_now();
-            } else if (input.left && can_move(level, player_x - 1, player_y)) {
-                level[player_y][player_x] = '_';
-                player_x -= 1;
-                level[player_y][player_x] = 'E';
-                player_last_move_time = time_now();
-            } else if (input.up && can_move(level, player_x, player_y - 1)) {
-                level[player_y][player_x] = '_';
-                player_y -= 1;
-                level[player_y][player_x] = 'E';
-                player_last_move_time = time_now();
-            } else if (input.down && can_move(level, player_x, player_y + 1)) {
-                level[player_y][player_x] = '_';
-                player_y += 1;
-                level[player_y][player_x] = 'E';
+            v2 next_player_pos = player_pos;
+
+            if (input.right) {
+                next_player_pos.x += 1;
+            } else if (input.left) {
+                next_player_pos.x -= 1;
+            } else if (input.up) {
+                next_player_pos.y -= 1;
+            } else if (input.down) {
+                next_player_pos.y += 1;
+            }
+
+            if (can_move(level, next_player_pos)) {
+                if (level[next_player_pos.y][next_player_pos.x] == 'd') {
+                    collect_diamond(&diamonds, next_player_pos);
+                    diamonds_collected += 1;
+                    printf(" %d ", diamonds_collected); 
+                }
+                level[player_pos.y][player_pos.x] = '_';
+                level[next_player_pos.y][next_player_pos.x] = 'E';
+                player_pos = next_player_pos;
                 player_last_move_time = time_now();
             }
-            int rel_player_x = player_x - viewport_x;
-            if (rel_player_x >= 20) {
-                viewport_x += rel_player_x - 20;
-                if (viewport_x > viewport_x_max) {
-                    viewport_x = viewport_x_max;
-                } 
-            }
-            if (rel_player_x <= 9) {
-                viewport_x -= 9 - rel_player_x;
-                if (viewport_x < 0) {
-                    viewport_x = 0;
-                } 
-            }
-            int rel_player_y = player_y - viewport_y;
-            if (rel_player_y >= 13) {
-                viewport_y += rel_player_y - 13;
-                if (viewport_y > viewport_y_max) {
-                    viewport_y = viewport_y_max;
-                } 
-            }
-            if (rel_player_y <= 6) {
-                viewport_y -= 6 - rel_player_y;
-                if (viewport_y < 0) {
-                    viewport_y = 0;
-                } 
+
+            // Move viewport
+            {
+                int rel_player_x = player_pos.x - viewport_x;
+                if (rel_player_x >= 20) {
+                    viewport_x += rel_player_x - 20;
+                    if (viewport_x > viewport_x_max) {
+                        viewport_x = viewport_x_max;
+                    } 
+                }
+                if (rel_player_x <= 9) {
+                    viewport_x -= 9 - rel_player_x;
+                    if (viewport_x < 0) {
+                        viewport_x = 0;
+                    } 
+                }
+                int rel_player_y = player_pos.y - viewport_y;
+                if (rel_player_y >= 13) {
+                    viewport_y += rel_player_y - 13;
+                    if (viewport_y > viewport_y_max) {
+                        viewport_y = viewport_y_max;
+                    } 
+                }
+                if (rel_player_y <= 6) {
+                    viewport_y -= 6 - rel_player_y;
+                    if (viewport_y < 0) {
+                        viewport_y = 0;
+                    } 
+                }
             }
         }
 
