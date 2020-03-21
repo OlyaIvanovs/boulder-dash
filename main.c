@@ -137,10 +137,24 @@ void draw_tile(DrawContext context, v2 src, v2 dst) {
 }
 
 void draw_number(DrawContext context, int num, v2 pos, Color color) {
-    v2 src = {0, 380};
-    num = 3;
-    src.y += num * 32;
-    draw_tile(context, src, pos);
+    int digits[30];
+    int digit;
+    int num_digits = 0;
+    num = 12345;
+    while ((digit = num % 10) > 0) {
+        digits[num_digits] = digit;
+        num_digits++;
+        num = num / 10;
+    }
+    if (num_digits == 0) {
+        num_digits = 1;
+        digits[0] = 0;
+    }
+    for (int i = 0; i < num_digits; i++) {
+        v2 src = {0, 385 + digits[num_digits - i - 1] * 30};
+        v2 dst = {pos.x + i, pos.y};
+        draw_tile(context, src, dst);   
+    }
 }
 
 int main()
