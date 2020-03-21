@@ -13,6 +13,11 @@
 
 #define COUNT(arr) (sizeof(arr)/sizeof(*arr))
 
+typedef enum {
+    COLOR_WHITE = 0,
+    COLOR_YELLOW,
+} Color;
+
 typedef char Level[LEVEL_HEIGHT][LEVEL_WIDTH];
 
 typedef uint64_t u64;
@@ -42,6 +47,13 @@ typedef struct {
     v2 start_frame;
     int fps;
 } Animation;
+
+typedef struct {
+    SDL_Renderer *renderer;
+    SDL_Texture *texture;
+    v2 window_offset;
+    int tile_size;
+} DrawContext;
 
 u64 time_now() {
     return SDL_GetPerformanceCounter();
@@ -107,11 +119,28 @@ void collect_diamond(Objects *diamonds, v2 pos) {
         if (diamonds->objects[i].x == pos.x && diamonds->objects[i].y == pos.y) {
             v2 *pos = &diamonds->objects[i];
             v2 *pos_lst = &diamonds->objects[diamonds->num-1];
-            pos->x = pos_lst->x;
-            pos->y = pos_lst->y;
+            *pos = *pos_lst;
             diamonds->num -= 1;
         }
     }
+}
+
+void draw_tile(DrawContext context, v2 src, v2 dst) {
+    SDL_Rect src_rect = {src.x, src.y, 32, 32};
+    SDL_Rect dst_rect = {
+        context.window_offset.x + dst.x * context.tile_size, 
+        context.window_offset.y + dst.y * context.tile_size, 
+        context.tile_size, 
+        context.tile_size
+    };
+    SDL_RenderCopy(context.renderer, context.texture, &src_rect, &dst_rect);
+}
+
+void draw_number(DrawContext context, int num, v2 pos, Color color) {
+    v2 src = {0, 380};
+    num = 3;
+    src.y += num * 32;
+    draw_tile(context, src, pos);
 }
 
 int main()
@@ -162,12 +191,16 @@ int main()
     int viewport_y = 0;
     int viewport_width = 30;
     int tile_size = window_width / viewport_width;
-    int window_xoffset = (window_width % tile_size) / 2;  // to adjust tiles 
     int viewport_height = window_height / tile_size;
-    int window_yoffset = (window_height % tile_size) / 2;
+
+    v2 window_offset = {};
+    window_offset.x = (window_width % tile_size) / 2;  // to adjust tiles 
+    window_offset.y = (window_height % tile_size) / 2;
 
     int viewport_x_max = LEVEL_WIDTH - viewport_width;
     int viewport_y_max = LEVEL_HEIGHT - viewport_height;
+
+    DrawContext draw_context = {renderer, texture, window_offset, tile_size};
 
     int num_loops = 0;
     u64 start = time_now(); 
@@ -307,7 +340,6 @@ int main()
                 if (level[next_player_pos.y][next_player_pos.x] == 'd') {
                     collect_diamond(&diamonds, next_player_pos);
                     diamonds_collected += 1;
-                    printf(" %d ", diamonds_collected); 
                 }
                 level[player_pos.y][player_pos.x] = '_';
                 level[next_player_pos.y][next_player_pos.x] = 'E';
@@ -362,10 +394,15 @@ int main()
             player_animation = &anim_idle1;
         }
 
+        // Draw status
+        v2 pos = {10, 0};
+        draw_number(draw_context, diamonds_collected, pos, COLOR_YELLOW);
+
         // Draw level
-        for (int y = 0; y < viewport_height; y++) {
+        for (int y = 1; y < viewport_height; y++) {
             for (int x = 0; x < viewport_width; x++) {
-                SDL_Rect src = {0, 192, 32, 32};
+                v2 src = {0, 192};
+                v2 dst = {x, y};
                 char tile_type = level[viewport_y + y][viewport_x + x];                
                 if (tile_type == 'r') {
                     src.x = 0;
@@ -388,10 +425,8 @@ int main()
                     src.x = frame.x;
                     src.y = frame.y;
                 }
-                SDL_Rect dst = {window_xoffset + x * tile_size, window_yoffset + y * tile_size, tile_size, tile_size};
-                SDL_RenderCopy(renderer, texture, &src, &dst);
+                draw_tile(draw_context, src, dst);
             }
-
         }
         
         SDL_RenderPresent(renderer);
