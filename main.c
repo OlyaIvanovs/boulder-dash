@@ -42,6 +42,13 @@ typedef struct {
 } Objects;
 
 typedef struct {
+    int lifetime;
+    v2 pos;
+} Lock;
+
+#define NUM_LOCKS 10
+
+typedef struct {
     u64 start_time;
     int num_frames;
     v2 start_frame;
@@ -82,11 +89,24 @@ bool can_move(Level level, v2 pos) {
     return false;
 }
 
-void drop_objects(Level level, Objects *objects, char obj_sym) {
+void add_lock(Lock *locks, int x, int y) {
+    for (int i = 0; i < NUM_LOCKS; i++) {
+        if (locks[i].lifetime == 0) {
+            locks[i].lifetime = 2;
+            locks[i].pos.x = x;
+            locks[i].pos.y = y;
+            return;
+        }
+    }
+    assert(!"Not enough space for locks");
+}
+
+void drop_objects(Level level, Objects *objects, char obj_sym, Lock *locks) {
     for (int i = 0; i < objects->num; i++) {
         int x = objects->objects[i].x;
         int y = objects->objects[i].y;
         char tile_under = level[y + 1][x];
+        char tile_above = level[y - 1][x];
         assert(level[y][x] ==  obj_sym);
         if (tile_under == '_') {
             // Drop down
@@ -95,17 +115,19 @@ void drop_objects(Level level, Objects *objects, char obj_sym) {
             objects->objects[i].y += 1;
             continue;
         }
-        if (tile_under == 'r' || tile_under == 'd') {
+        if ((tile_under == 'r' || tile_under == 'd') && (tile_above != 'd' && tile_above != 'r' && tile_above != 'l') ) {
             if (level[y][x - 1] == '_' && level[y + 1][x - 1] == '_') { 
                 // Drop left
-                level[y][x] = '_';
+                level[y][x] = 'l';
+                add_lock(locks, x, y);
                 level[y][x - 1] = obj_sym;
                 objects->objects[i].x -= 1;
                 continue;
             }
             if (level[y][x + 1] == '_' && level[y + 1][x + 1] == '_') { 
                 // Drop right
-                level[y][x] = '_';
+                level[y][x] = 'l';
+                add_lock(locks, x, y);
                 level[y][x + 1] = obj_sym;
                 objects->objects[i].x += 1;
                 continue;
@@ -138,10 +160,9 @@ void draw_tile(DrawContext context, v2 src, v2 dst) {
 
 void draw_number(DrawContext context, int num, v2 pos, Color color) {
     int digits[30];
-    int digit;
     int num_digits = 0;
-    num = 12345;
-    while ((digit = num % 10) > 0) {
+    while (num > 0) {
+        int digit = num % 10;
         digits[num_digits] = digit;
         num_digits++;
         num = num / 10;
@@ -257,6 +278,7 @@ int main()
 
     Objects rocks = {};
     Objects diamonds = {};
+    Lock locks[NUM_LOCKS] = {};
     int diamonds_collected = 0;
     v2 player_pos = {};
 
@@ -395,8 +417,21 @@ int main()
         // Drop rocks
         if (seconds_since(drop_last_time) > kDropDelay) {
             drop_last_time = time_now();
-            drop_objects(level, &rocks, 'r');
-            drop_objects(level, &diamonds, 'd');
+            drop_objects(level, &rocks, 'r', locks);
+            drop_objects(level, &diamonds, 'd', locks);
+            
+            // Clear locks
+            for (int i = 0; i < NUM_LOCKS; i++) { 
+                Lock *lock = &locks[i];
+                if (lock->lifetime > 0) {
+                    lock->lifetime--;
+                    if (lock->lifetime == 0) {
+                        if (level[lock->pos.y][lock->pos.x] == 'l') {
+                            level[lock->pos.y][lock->pos.x] = '_';
+                        }
+                    }
+                }
+            }
         }
 
          // Choose player animation
@@ -430,6 +465,9 @@ int main()
                 } else if (tile_type == '.') {
                     src.x = 32;
                     src.y = 224;
+                }  else if (tile_type == 'l') {
+                    src.x = 288;
+                    src.y = 0;
                 } else if (tile_type == 'E') {
                     v2 frame = get_frame(player_animation);
                     src.x = frame.x;
@@ -438,7 +476,7 @@ int main()
                     v2 frame = get_frame(&anim_diamond);
                     src.x = frame.x;
                     src.y = frame.y;
-                }
+                } 
                 draw_tile(draw_context, src, dst);
             }
         }
