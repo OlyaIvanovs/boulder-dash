@@ -158,8 +158,8 @@ void draw_tile(DrawContext context, v2 src, v2 dst) {
     SDL_RenderCopy(context.renderer, context.texture, &src_rect, &dst_rect);
 }
 
-void draw_number(DrawContext context, int num, v2 pos, Color color) {
-    int digits[30];
+void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digits) {
+    int digits[15] = {};
     int num_digits = 0;
     while (num > 0) {
         int digit = num % 10;
@@ -167,9 +167,8 @@ void draw_number(DrawContext context, int num, v2 pos, Color color) {
         num_digits++;
         num = num / 10;
     }
-    if (num_digits == 0) {
-        num_digits = 1;
-        digits[0] = 0;
+    if (num_digits < min_digits) {
+        num_digits = min_digits;
     }
     for (int i = 0; i < num_digits; i++) {
         v2 src = {0, 385 + digits[num_digits - i - 1] * 30};
@@ -444,8 +443,13 @@ int main()
         }
 
         // Draw status
+        // Display number of collected diamonds
         v2 pos = {10, 0};
-        draw_number(draw_context, diamonds_collected, pos, COLOR_YELLOW);
+        draw_number(draw_context, diamonds_collected, pos, COLOR_YELLOW, 2);
+
+        // Display score
+        v2 score_pos = {viewport_width - 6, 0};
+        draw_number(draw_context, 234, score_pos, COLOR_YELLOW, 6);
 
         // Draw level
         for (int y = 1; y < viewport_height; y++) {
