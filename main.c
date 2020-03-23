@@ -171,7 +171,10 @@ void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digi
         num_digits = min_digits;
     }
     for (int i = 0; i < num_digits; i++) {
-        v2 src = {0, 385 + digits[num_digits - i - 1] * 30};
+        v2 src = {0, 385 + digits[num_digits - i - 1] * 30}; 
+        if (color == COLOR_YELLOW) {
+            src.x = 32;
+        }
         v2 dst = {pos.x + i, pos.y};
         draw_tile(context, src, dst);   
     }
@@ -449,7 +452,7 @@ int main()
 
         // Display score
         v2 score_pos = {viewport_width - 6, 0};
-        draw_number(draw_context, 234, score_pos, COLOR_YELLOW, 6);
+        draw_number(draw_context, 234, score_pos, COLOR_WHITE, 6);
 
         // Draw level
         for (int y = 1; y < viewport_height; y++) {
