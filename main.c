@@ -22,7 +22,7 @@ typedef char Level[LEVEL_HEIGHT][LEVEL_WIDTH];
 
 typedef uint64_t u64;
 
-static double gPerformanceFrequency; 
+static double gPerformanceFrequency;
 
 typedef struct {
     bool right;
@@ -116,7 +116,7 @@ void drop_objects(Level level, Objects *objects, char obj_sym, Lock *locks) {
             continue;
         }
         if ((tile_under == 'r' || tile_under == 'd') && (tile_above != 'd' && tile_above != 'r' && tile_above != 'l') ) {
-            if (level[y][x - 1] == '_' && level[y + 1][x - 1] == '_') { 
+            if (level[y][x - 1] == '_' && level[y + 1][x - 1] == '_') {
                 // Drop left
                 level[y][x] = 'l';
                 add_lock(locks, x, y);
@@ -124,14 +124,14 @@ void drop_objects(Level level, Objects *objects, char obj_sym, Lock *locks) {
                 objects->objects[i].x -= 1;
                 continue;
             }
-            if (level[y][x + 1] == '_' && level[y + 1][x + 1] == '_') { 
+            if (level[y][x + 1] == '_' && level[y + 1][x + 1] == '_') {
                 // Drop right
                 level[y][x] = 'l';
                 add_lock(locks, x, y);
                 level[y][x + 1] = obj_sym;
                 objects->objects[i].x += 1;
                 continue;
-            }    
+            }
         }
     }
 }
@@ -150,9 +150,9 @@ void collect_diamond(Objects *diamonds, v2 pos) {
 void draw_tile(DrawContext context, v2 src, v2 dst) {
     SDL_Rect src_rect = {src.x, src.y, 32, 32};
     SDL_Rect dst_rect = {
-        context.window_offset.x + dst.x * context.tile_size, 
-        context.window_offset.y + dst.y * context.tile_size, 
-        context.tile_size, 
+        context.window_offset.x + dst.x * context.tile_size,
+        context.window_offset.y + dst.y * context.tile_size,
+        context.tile_size,
         context.tile_size
     };
     SDL_RenderCopy(context.renderer, context.texture, &src_rect, &dst_rect);
@@ -171,12 +171,12 @@ void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digi
         num_digits = min_digits;
     }
     for (int i = 0; i < num_digits; i++) {
-        v2 src = {0, 385 + digits[num_digits - i - 1] * 30}; 
+        v2 src = {0, 385 + digits[num_digits - i - 1] * 30};
         if (color == COLOR_YELLOW) {
             src.x = 32;
         }
         v2 dst = {pos.x + i, pos.y};
-        draw_tile(context, src, dst);   
+        draw_tile(context, src, dst);
     }
 }
 
@@ -231,7 +231,7 @@ int main()
     int viewport_height = window_height / tile_size;
 
     v2 window_offset = {};
-    window_offset.x = (window_width % tile_size) / 2;  // to adjust tiles 
+    window_offset.x = (window_width % tile_size) / 2;  // to adjust tiles
     window_offset.y = (window_height % tile_size) / 2;
 
     int viewport_x_max = LEVEL_WIDTH - viewport_width;
@@ -240,7 +240,7 @@ int main()
     DrawContext draw_context = {renderer, texture, window_offset, tile_size};
 
     int num_loops = 0;
-    u64 start = time_now(); 
+    u64 start = time_now();
     gPerformanceFrequency = (double)SDL_GetPerformanceFrequency();
 
     SDL_GL_SetSwapInterval(1);
@@ -305,8 +305,10 @@ int main()
         }
     }
 
-    u64 player_last_move_time = start;   
-    u64 drop_last_time = start;   
+    int diamonds_to_collect = diamonds.num;
+
+    u64 player_last_move_time = start;
+    u64 drop_last_time = start;
     const double kPlayerDelay = 0.1;
     const double kDropDelay = 0.15;
     Input input = {false, false, false, false};
@@ -316,7 +318,7 @@ int main()
     int is_running = 1;
     while (is_running) {
         double frame_time = seconds_since(start); // for animation
-        
+
         SDL_Event event;
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) {
@@ -343,7 +345,7 @@ int main()
                     input.down = true;
                 }
             }
-            
+
             if (event.type == SDL_KEYUP) {
                 if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
                     input.right = false;
@@ -392,26 +394,26 @@ int main()
                     viewport_x += rel_player_x - 20;
                     if (viewport_x > viewport_x_max) {
                         viewport_x = viewport_x_max;
-                    } 
+                    }
                 }
                 if (rel_player_x <= 9) {
                     viewport_x -= 9 - rel_player_x;
                     if (viewport_x < 0) {
                         viewport_x = 0;
-                    } 
+                    }
                 }
                 int rel_player_y = player_pos.y - viewport_y;
                 if (rel_player_y >= 13) {
                     viewport_y += rel_player_y - 13;
                     if (viewport_y > viewport_y_max) {
                         viewport_y = viewport_y_max;
-                    } 
+                    }
                 }
                 if (rel_player_y <= 6) {
                     viewport_y -= 6 - rel_player_y;
                     if (viewport_y < 0) {
                         viewport_y = 0;
-                    } 
+                    }
                 }
             }
         }
@@ -421,9 +423,9 @@ int main()
             drop_last_time = time_now();
             drop_objects(level, &rocks, 'r', locks);
             drop_objects(level, &diamonds, 'd', locks);
-            
+
             // Clear locks
-            for (int i = 0; i < NUM_LOCKS; i++) { 
+            for (int i = 0; i < NUM_LOCKS; i++) {
                 Lock *lock = &locks[i];
                 if (lock->lifetime > 0) {
                     lock->lifetime--;
@@ -446,23 +448,38 @@ int main()
         }
 
         // Draw status
+        // Display number of diamonds to collect
+        v2 pos_start = {0, 0};
+        draw_number(draw_context, diamonds_to_collect, pos_start, COLOR_YELLOW, 2);
+
         // Display number of collected diamonds
-        v2 pos = {10, 0};
-        draw_number(draw_context, diamonds_collected, pos, COLOR_YELLOW, 2);
+        v2 pos_diamonds = {10, 0};
+        draw_number(draw_context, diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
 
         // Display score
-        v2 score_pos = {viewport_width - 6, 0};
-        draw_number(draw_context, 234, score_pos, COLOR_WHITE, 6);
+        v2 pos_score = {viewport_width - 6, 0};
+        int score = 10 * diamonds_collected;
+        draw_number(draw_context, score, pos_score, COLOR_WHITE, 6);
+
+        // Display time
+        v2 pos_time = {viewport_width / 2, 0};
+        int level_time = 150;
+        int time_to_show = level_time - (int)(seconds_since(start));
+        if (time_to_show < 0) {
+            time_to_show = 0;
+        }
+        draw_number(draw_context, time_to_show, pos_time, COLOR_WHITE, 3);
+
 
         // Draw level
         for (int y = 1; y < viewport_height; y++) {
             for (int x = 0; x < viewport_width; x++) {
                 v2 src = {0, 192};
                 v2 dst = {x, y};
-                char tile_type = level[viewport_y + y][viewport_x + x];                
+                char tile_type = level[viewport_y + y][viewport_x + x];
                 if (tile_type == 'r') {
                     src.x = 0;
-                    src.y = 224;        
+                    src.y = 224;
                 } else if (tile_type == 'w') {
                     src.x = 96;
                     src.y = 192;
@@ -483,16 +500,16 @@ int main()
                     v2 frame = get_frame(&anim_diamond);
                     src.x = frame.x;
                     src.y = frame.y;
-                } 
+                }
                 draw_tile(draw_context, src, dst);
             }
         }
-        
+
         SDL_RenderPresent(renderer);
 
         // {
         //     u64 now = time_now();
-        //     double elapsed_ms = (double)(now - start) * 1000 / gPerformanceFrequency; 
+        //     double elapsed_ms = (double)(now - start) * 1000 / gPerformanceFrequency;
         //     start = now;
         //     printf("MS %.3lf \n", elapsed_ms);
         // }
