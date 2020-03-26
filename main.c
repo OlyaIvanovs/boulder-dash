@@ -1,4 +1,5 @@
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_mixer.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
@@ -182,7 +183,29 @@ void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digi
 
 int main()
 {
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK);
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO) < 0) {
+        return 1;
+    }
+
+    if (Mix_Init(MIX_INIT_OGG) == 0) {
+        return 1;
+    }
+
+    if (Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 4096) == -1) {
+        printf("Couldn't open Mixer\n");
+        return 1;
+    }
+
+    Mix_Music *music = Mix_LoadMUS("sounds/bd1.ogg");
+    if (music == NULL) {
+        printf("Couldn't load bd1.ogg\n");
+        return 1;
+    }
+
+    if (Mix_PlayMusic(music, -1) == -1) {
+        printf("Couldn't play music.\n");
+        return 1;
+    }
 
     SDL_Window *window = SDL_CreateWindow(
         "Boulder-Dash",
@@ -518,6 +541,9 @@ int main()
     }
 
     SDL_DestroyWindow(window);
+    Mix_FreeMusic(music);
+    Mix_CloseAudio();
+    Mix_Quit();
     SDL_Quit();
     return 0;
 }
