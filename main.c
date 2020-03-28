@@ -90,6 +90,14 @@ bool can_move(Level level, v2 pos) {
     return false;
 }
 
+bool can_move_rock(Level level, v2 pos, v2 next_pos) {
+    if (((pos.x < next_pos.x) && (level[pos.y][next_pos.x + 1] == '_')) ||
+        ((pos.x > next_pos.x) && (level[pos.y][next_pos.x - 1] == '_'))) {
+        return true;
+    }
+    return false;
+}
+
 void add_lock(Lock *locks, int x, int y) {
     for (int i = 0; i < NUM_LOCKS; i++) {
         if (locks[i].lifetime == 0) {
@@ -187,6 +195,7 @@ int main()
         return 1;
     }
 
+    // Audio
     if (Mix_Init(MIX_INIT_OGG) == 0) {
         return 1;
     }
@@ -266,6 +275,9 @@ int main()
     u64 start = time_now();
     gPerformanceFrequency = (double)SDL_GetPerformanceFrequency();
 
+    bool rock_is_pushed = false;
+    u64 rock_start_move_time = time_now();
+
     SDL_GL_SetSwapInterval(1);
 
     // Init animations
@@ -286,14 +298,14 @@ int main()
     Animation anim_go_left = {};
     anim_go_left.start_time = start;
     anim_go_left.num_frames = 8;
-    anim_go_left.fps = 15;
+    anim_go_left.fps = 25;
     anim_go_left.start_frame.x = 0;
     anim_go_left.start_frame.y = 128;
 
     Animation anim_go_right = {};
     anim_go_right.start_time = start;
     anim_go_right.num_frames = 8;
-    anim_go_right.fps = 15;
+    anim_go_right.fps = 25;
     anim_go_right.start_frame.x = 0;
     anim_go_right.start_frame.y = 160;
 
@@ -408,6 +420,38 @@ int main()
                 level[next_player_pos.y][next_player_pos.x] = 'E';
                 player_pos = next_player_pos;
                 player_last_move_time = time_now();
+            }
+
+            // Move rock
+            if (can_move_rock(level, player_pos, next_player_pos)) {
+                if (!rock_is_pushed) {
+                    rock_start_move_time = time_now();
+                    rock_is_pushed = true;
+                } else if (seconds_since(rock_start_move_time) > 0.5f) {
+                    int rock_next_x;
+                    if (player_pos.x < next_player_pos.x) {
+                        rock_next_x = next_player_pos.x + 1;
+                    } else {
+                        rock_next_x = next_player_pos.x - 1;
+                    }
+
+                    level[player_pos.y][player_pos.x] = '_';
+                    level[next_player_pos.y][next_player_pos.x] = 'E';
+
+                    for (int i = 0; i < rocks.num; i++) {
+                        if (rocks.objects[i].x == next_player_pos.x && rocks.objects[i].y == next_player_pos.y) {
+                            rocks.objects[i].x = rock_next_x;
+                            level[next_player_pos.y][rock_next_x] = 'r';
+                            break;
+                        }
+                    }
+                    player_pos = next_player_pos;
+                }
+            }
+
+            if (player_pos.x == next_player_pos.x) {
+                rock_start_move_time = time_now();
+                rock_is_pushed = false;
             }
 
             // Move viewport

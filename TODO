@@ -1,7 +1,17 @@
-- display score
 - kill player
+- move rocks
+- speed run animation
+- stomp
+- next level
+- out of time
 
 DONE
+26.03.2020
+- add sounds
+
+24.03.2020
+- display score
+
 22.03.2020
 - fix bug with rock sliding right/left
 
@@ -15,7 +25,7 @@ DONE
 - animations
 
 14.03.2020
-- rocks slide off the edges of other rocks 
+- rocks slide off the edges of other rocks
 
 13.03.2020
 - rewrite droping rocks
@@ -25,10 +35,10 @@ DONE
 - drop rocks
 
 11.03.2020
-- move through the entire map 
+- move through the entire map
 
 10.03.2020
--  
+-
 
 08.03.2020
 - modifiable level
@@ -59,7 +69,7 @@ DONE
 -calculated the time it takes to render a frame
 
 15.12.2019
--trying to slow down animation 
+-trying to slow down animation
 
 13.12.2019
 - animation
