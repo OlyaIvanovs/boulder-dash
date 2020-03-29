@@ -307,12 +307,19 @@ int main() {
   anim_go_right.start_frame.x = 0;
   anim_go_right.start_frame.y = 160;
 
-  Animation anim_stomp = {};
-  anim_stomp.start_time = start;
-  anim_stomp.num_frames = 8;
-  anim_stomp.fps = 10;
-  anim_stomp.start_frame.x = 0;
-  anim_stomp.start_frame.y = 98;
+  Animation anim_idle2 = {};
+  anim_idle2.start_time = start;
+  anim_idle2.num_frames = 8;
+  anim_idle2.fps = 10;
+  anim_idle2.start_frame.x = 0;
+  anim_idle2.start_frame.y = 66;
+
+  Animation anim_idle3 = {};
+  anim_idle3.start_time = start;
+  anim_idle3.num_frames = 8;
+  anim_idle3.fps = 10;
+  anim_idle3.start_frame.x = 0;
+  anim_idle3.start_frame.y = 98;
 
   // Init level
   char level[LEVEL_HEIGHT][LEVEL_WIDTH];
@@ -513,7 +520,11 @@ int main() {
 
     // Choose player animation
     if (seconds_since(player_last_move_time) > 5) {
-      player_animation = &anim_stomp;
+      if (seconds_since(player_last_move_time) > 10) {
+        player_animation = &anim_idle3;
+      } else {
+        player_animation = &anim_idle2;
+      }
     } else if (input.right) {
       player_animation = &anim_go_right;
     } else if (input.left) {
