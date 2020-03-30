@@ -37,6 +37,11 @@ typedef struct {
   int y;
 } v2;
 
+static inline v2 V2(int x, int y) {
+  v2 result = {x, y};
+  return result;
+}
+
 typedef struct {
   int num;
   v2 objects[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
@@ -63,6 +68,13 @@ typedef struct {
   int tile_size;
 } DrawContext;
 
+typedef struct {
+  u64 time_left;
+  int score_per_diamond;
+  int min_diamonds;
+  int diamonds_collected;
+} LevelStatus;
+
 u64 time_now() { return SDL_GetPerformanceCounter(); }
 
 double seconds_since(u64 timestamp) {
@@ -72,8 +84,7 @@ double seconds_since(u64 timestamp) {
 v2 get_frame(Animation *animation) {
   v2 result;
   int frame_index =
-      (int)(seconds_since(animation->start_time) * animation->fps) %
-      animation->num_frames;
+      (int)(seconds_since(animation->start_time) * animation->fps) % animation->num_frames;
   result.x = animation->start_frame.x + frame_index * 32;
   result.y = animation->start_frame.y;
   return result;
@@ -84,8 +95,7 @@ bool can_move(Level level, v2 pos) {
     return false;
   }
   char tile_type = level[pos.y][pos.x];
-  if (tile_type == ' ' || tile_type == '.' || tile_type == '_' ||
-      tile_type == 'd') {
+  if (tile_type == ' ' || tile_type == '.' || tile_type == '_' || tile_type == 'd') {
     return true;
   }
   return false;
@@ -161,13 +171,12 @@ void collect_diamond(Objects *diamonds, v2 pos) {
 void draw_tile(DrawContext context, v2 src, v2 dst) {
   SDL_Rect src_rect = {src.x, src.y, 32, 32};
   SDL_Rect dst_rect = {context.window_offset.x + dst.x * context.tile_size,
-                       context.window_offset.y + dst.y * context.tile_size,
-                       context.tile_size, context.tile_size};
+                       context.window_offset.y + dst.y * context.tile_size, context.tile_size,
+                       context.tile_size};
   SDL_RenderCopy(context.renderer, context.texture, &src_rect, &dst_rect);
 }
 
-void draw_number(DrawContext context, int num, v2 pos, Color color,
-                 int min_digits) {
+void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digits) {
   int digits[15] = {};
   int num_digits = 0;
   while (num > 0) {
@@ -199,8 +208,7 @@ int main() {
     return 1;
   }
 
-  if (Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT,
-                    MIX_DEFAULT_CHANNELS, 4096) == -1) {
+  if (Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 4096) == -1) {
     printf("Couldn't open Mixer\n");
     return 1;
   }
@@ -216,9 +224,9 @@ int main() {
     return 1;
   }
 
-  SDL_Window *window = SDL_CreateWindow(
-      "Boulder-Dash", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 960,
-      480, SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
+  SDL_Window *window =
+      SDL_CreateWindow("Boulder-Dash", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 960, 480,
+                       SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
 
   if (window == NULL) {
     printf("Couldn't create window: %s\n", SDL_GetError());
@@ -228,8 +236,7 @@ int main() {
   int window_width, window_height;
   SDL_GetWindowSize(window, &window_width, &window_height);
 
-  SDL_Renderer *renderer =
-      SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+  SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
   if (renderer == NULL) {
     printf("Couldn't create renderer: %s\n", SDL_GetError());
     return 1;
@@ -240,8 +247,8 @@ int main() {
 
   SDL_Rect rect = {0, 0, width, height};
 
-  SDL_Texture *texture = SDL_CreateTexture(
-      renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
+  SDL_Texture *texture =
+      SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
   if (texture == NULL) {
     printf("Couldn't create texture: %s\n", SDL_GetError());
     return 1;
@@ -352,7 +359,10 @@ int main() {
     }
   }
 
-  int diamonds_to_collect = diamonds.num;
+  LevelStatus status = {};
+  status.time_left = 150;
+  status.score_per_diamond = 10;
+  status.min_diamonds = diamonds.num / 6;
 
   u64 player_last_move_time = start;
   u64 drop_last_time = start;
@@ -361,6 +371,8 @@ int main() {
   Input input = {false, false, false, false};
 
   Animation *player_animation = &anim_idle1;
+
+  int score = 0;
 
   int is_running = 1;
   while (is_running) {
@@ -426,7 +438,11 @@ int main() {
       if (can_move(level, next_player_pos)) {
         if (level[next_player_pos.y][next_player_pos.x] == 'd') {
           collect_diamond(&diamonds, next_player_pos);
-          diamonds_collected += 1;
+          status.diamonds_collected += 1;
+          score += status.score_per_diamond;
+          if (status.diamonds_collected >= status.min_diamonds) {
+            status.score_per_diamond = 20;
+          }
         }
         level[player_pos.y][player_pos.x] = '_';
         level[next_player_pos.y][next_player_pos.x] = 'E';
@@ -535,23 +551,28 @@ int main() {
 
     // Draw status
     // Display number of diamonds to collect
-    v2 pos_start = {0, 0};
-    draw_number(draw_context, diamonds_to_collect, pos_start, COLOR_YELLOW, 2);
+    v2 white_diamond = {256, 32};
+    draw_tile(draw_context, white_diamond, V2(2, 0));
+
+    if (status.diamonds_collected < status.min_diamonds) {
+      draw_number(draw_context, status.min_diamonds, V2(0, 0), COLOR_YELLOW, 2);
+    } else {
+      draw_tile(draw_context, white_diamond, V2(0, 0));
+      draw_tile(draw_context, white_diamond, V2(1, 0));
+    }
+    draw_number(draw_context, status.score_per_diamond, V2(3, 0), COLOR_WHITE, 2);
 
     // Display number of collected diamonds
     v2 pos_diamonds = {10, 0};
-    draw_number(draw_context, diamonds_collected, pos_diamonds, COLOR_YELLOW,
-                2);
+    draw_number(draw_context, status.diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
 
-    // Display score
+    // Display overall score
     v2 pos_score = {viewport_width - 6, 0};
-    int score = 10 * diamonds_collected;
     draw_number(draw_context, score, pos_score, COLOR_WHITE, 6);
 
     // Display time
     v2 pos_time = {viewport_width / 2, 0};
-    int level_time = 150;
-    int time_to_show = level_time - (int)(seconds_since(start));
+    int time_to_show = status.time_left - (int)(seconds_since(start));
     if (time_to_show < 0) {
       time_to_show = 0;
     }
