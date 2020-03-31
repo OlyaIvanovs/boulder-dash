@@ -6,11 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_ONLY_PNG
-#include "lib/stb_image.h"
-
 #include "levels.h"
+#include "lib/stb_image.h"
 
 #define COUNT(arr) (sizeof(arr) / sizeof(*arr))
 
