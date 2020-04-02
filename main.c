@@ -325,6 +325,13 @@ int main() {
   anim_idle3.start_frame.x = 0;
   anim_idle3.start_frame.y = 98;
 
+  Animation anim_exit = {};
+  anim_exit.start_time = start;
+  anim_exit.num_frames = 1;  // no exit annimation until all diamonds are collected
+  anim_exit.fps = 4;
+  anim_exit.start_frame.x = 32;
+  anim_exit.start_frame.y = 192;
+
   // Init level
   char level[LEVEL_HEIGHT][LEVEL_WIDTH];
   memcpy(level, cave_1, LEVEL_HEIGHT * LEVEL_WIDTH);
@@ -332,7 +339,6 @@ int main() {
   Objects rocks = {};
   Objects diamonds = {};
   Lock locks[NUM_LOCKS] = {};
-  int diamonds_collected = 0;
   v2 player_pos = {};
 
   for (int y = 0; y < LEVEL_HEIGHT; ++y) {
@@ -373,6 +379,7 @@ int main() {
 
   int is_running = 1;
   while (is_running) {
+    bool white_tunnel = false;
     double frame_time = seconds_since(start);  // for animation
 
     SDL_Event event;
@@ -437,8 +444,11 @@ int main() {
           collect_diamond(&diamonds, next_player_pos);
           status.diamonds_collected += 1;
           score += status.score_per_diamond;
-          if (status.diamonds_collected >= status.min_diamonds) {
+          if (status.diamonds_collected == status.min_diamonds) {
             status.score_per_diamond = 20;
+            anim_exit.num_frames = 2;
+            anim_exit.start_frame.x = 32;
+            white_tunnel = true;
           }
         }
         level[player_pos.y][player_pos.x] = '_';
@@ -596,12 +606,19 @@ int main() {
         } else if (tile_type == 'l') {
           src.x = 288;
           src.y = 0;
+        } else if (tile_type == '_' && white_tunnel) {
+          src.x = 300;
+          src.y = 0;
         } else if (tile_type == 'E') {
           v2 frame = get_frame(player_animation);
           src.x = frame.x;
           src.y = frame.y;
         } else if (tile_type == 'd') {
           v2 frame = get_frame(&anim_diamond);
+          src.x = frame.x;
+          src.y = frame.y;
+        } else if (tile_type == 'X') {
+          v2 frame = get_frame(&anim_exit);
           src.x = frame.x;
           src.y = frame.y;
         }
