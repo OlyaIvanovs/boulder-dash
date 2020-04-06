@@ -1,5 +1,5 @@
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_mixer.h>
+#include <SDL2/SDL_audio.h>
 #include <assert.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -8,6 +8,7 @@
 
 #include "levels.h"
 #include "lib/stb_image.h"
+// #include "lib/stb_vorbis.c"
 
 #define COUNT(arr) (sizeof(arr) / sizeof(*arr))
 
@@ -18,6 +19,9 @@ typedef enum {
 
 typedef char Level[LEVEL_HEIGHT][LEVEL_WIDTH];
 
+typedef uint8_t u8;
+typedef uint16_t u16;
+typedef uint32_t u32;
 typedef uint64_t u64;
 
 static double gPerformanceFrequency;
@@ -72,7 +76,9 @@ typedef struct {
   int diamonds_collected;
 } LevelStatus;
 
-u64 time_now() { return SDL_GetPerformanceCounter(); }
+u64 time_now() {
+  return SDL_GetPerformanceCounter();
+}
 
 double seconds_since(u64 timestamp) {
   return (double)(time_now() - timestamp) / gPerformanceFrequency;
@@ -195,31 +201,46 @@ void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digi
   }
 }
 
+typedef struct sample_frame {
+  short sample1;
+  short sample2;
+} sample_frame;
+
+void audio_callback(void *userdata, u8 *stream, int len) {
+  // SDL_memset(stream, 0, len);
+  sample_frame *samples = (sample_frame *)stream;
+  short value = 1000;
+  for (int i = 0; i < len / sizeof(sample_frame); i++) {
+    if (i % 16 == 0) {
+      value = -value;
+    }
+    samples->sample1 = value;
+    samples->sample2 = value;
+    samples++;
+  }
+}
+
 int main() {
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO) < 0) {
     return 1;
   }
 
   // Audio
-  if (Mix_Init(MIX_INIT_OGG) == 0) {
-    return 1;
-  }
+  SDL_AudioSpec desired_audiospec = {};
+  SDL_AudioSpec audiospec = {};
+  desired_audiospec.freq = 48000;
+  desired_audiospec.format = AUDIO_S16;
+  desired_audiospec.channels = 2;
+  desired_audiospec.samples = 4096;
+  desired_audiospec.callback = audio_callback;
 
-  if (Mix_OpenAudio(MIX_DEFAULT_FREQUENCY, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 4096) == -1) {
-    printf("Couldn't open Mixer\n");
+  SDL_AudioDeviceID audio_device_id =
+      SDL_OpenAudioDevice(NULL, 0, &desired_audiospec, &audiospec, 0);
+  if (audio_device_id == 0) {
+    printf("Failed to open audio: %s\n", SDL_GetError());
     return 1;
   }
-
-  Mix_Music *music = Mix_LoadMUS("sounds/bd1.ogg");
-  if (music == NULL) {
-    printf("Couldn't load bd1.ogg\n");
-    return 1;
-  }
-
-  if (Mix_PlayMusic(music, -1) == -1) {
-    printf("Couldn't play music.\n");
-    return 1;
-  }
+  SDL_PauseAudioDevice(audio_device_id, 0);
 
   SDL_Window *window =
       SDL_CreateWindow("Boulder-Dash", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 960, 480,
@@ -638,10 +659,8 @@ int main() {
     num_loops++;
   }
 
+  SDL_CloseAudioDevice(audio_device_id);
   SDL_DestroyWindow(window);
-  Mix_FreeMusic(music);
-  Mix_CloseAudio();
-  Mix_Quit();
   SDL_Quit();
   return 0;
 }
