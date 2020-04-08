@@ -8,7 +8,7 @@
 
 #include "levels.h"
 #include "lib/stb_image.h"
-// #include "lib/stb_vorbis.c"
+#include "lib/stb_vorbis.c"
 
 #define COUNT(arr) (sizeof(arr) / sizeof(*arr))
 
@@ -201,22 +201,22 @@ void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digi
   }
 }
 
-typedef struct sample_frame {
-  short sample1;
-  short sample2;
-} sample_frame;
+typedef struct {
+  short *start;
+  u32 offset;
+  int len_samples;
+} AudioData;
 
 void audio_callback(void *userdata, u8 *stream, int len) {
-  // SDL_memset(stream, 0, len);
-  sample_frame *samples = (sample_frame *)stream;
-  short value = 1000;
-  for (int i = 0; i < len / sizeof(sample_frame); i++) {
-    if (i % 16 == 0) {
-      value = -value;
-    }
-    samples->sample1 = value;
-    samples->sample2 = value;
-    samples++;
+  AudioData *audiodata = userdata;
+  if ((audiodata->offset + len / sizeof(short)) > audiodata->len_samples) {
+    int last_chunk_len = (audiodata->len_samples - audiodata->offset) * sizeof(short);
+    SDL_memcpy(stream, audiodata->start + audiodata->offset, last_chunk_len);
+    SDL_memcpy(stream + last_chunk_len, audiodata->start, len - last_chunk_len);
+    audiodata->offset = (len - last_chunk_len) / sizeof(short);
+  } else {
+    SDL_memcpy(stream, audiodata->start + audiodata->offset, len);
+    audiodata->offset += len / sizeof(short);
   }
 }
 
@@ -226,13 +226,25 @@ int main() {
   }
 
   // Audio
+  int channels;
+  int sample_rate;
+  short *samples;
+  int len_samples = stb_vorbis_decode_filename("sounds/bd1.ogg", &channels, &sample_rate, &samples);
+
   SDL_AudioSpec desired_audiospec = {};
   SDL_AudioSpec audiospec = {};
-  desired_audiospec.freq = 48000;
+  desired_audiospec.freq = sample_rate;
   desired_audiospec.format = AUDIO_S16;
-  desired_audiospec.channels = 2;
+  desired_audiospec.channels = channels;
   desired_audiospec.samples = 4096;
   desired_audiospec.callback = audio_callback;
+
+  AudioData audiodata = {};
+  audiodata.start = samples;
+  audiodata.offset = 0;
+  audiodata.len_samples = len_samples;
+
+  desired_audiospec.userdata = &audiodata;
 
   SDL_AudioDeviceID audio_device_id =
       SDL_OpenAudioDevice(NULL, 0, &desired_audiospec, &audiospec, 0);
