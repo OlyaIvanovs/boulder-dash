@@ -203,21 +203,23 @@ void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digi
 
 typedef struct {
   short *start;
-  u32 offset;
-  int len_samples;
-} AudioData;
+  int cursor;
+  int size;  // in samples
+  SDL_AudioDeviceID audio_device_id;
+} AudioBuffer;
 
 void audio_callback(void *userdata, u8 *stream, int len) {
-  AudioData *audiodata = userdata;
-  if ((audiodata->offset + len / sizeof(short)) > audiodata->len_samples) {
-    int last_chunk_len = (audiodata->len_samples - audiodata->offset) * sizeof(short);
-    SDL_memcpy(stream, audiodata->start + audiodata->offset, last_chunk_len);
-    SDL_memcpy(stream + last_chunk_len, audiodata->start, len - last_chunk_len);
-    audiodata->offset = (len - last_chunk_len) / sizeof(short);
-  } else {
-    SDL_memcpy(stream, audiodata->start + audiodata->offset, len);
-    audiodata->offset += len / sizeof(short);
-  }
+  AudioBuffer *audio_buffer = userdata;
+  assert((audio_buffer->size * sizeof(short)) % len == 0);
+  SDL_memcpy(stream, audio_buffer->start + audio_buffer->cursor, len);
+  audio_buffer->cursor += len / sizeof(short);
+  audio_buffer->cursor %= audio_buffer->size;
+}
+
+void play_sound(AudioBuffer *buffer, short *samples, int len_samples) {
+  SDL_LockAudioDevice(buffer->audio_device_id);
+  SDL_memcpy(buffer->start + buffer->cursor, samples, len_samples * sizeof(short));
+  SDL_UnlockAudioDevice(buffer->audio_device_id);
 }
 
 int main() {
@@ -226,25 +228,35 @@ int main() {
   }
 
   // Audio
-  int channels;
-  int sample_rate;
-  short *samples;
-  int len_samples = stb_vorbis_decode_filename("sounds/bd1.ogg", &channels, &sample_rate, &samples);
+  int walk_sound_size;
+  short *walk_sound_samples;
+  {
+    int channels;
+    int sample_rate;
+    walk_sound_size =
+        stb_vorbis_decode_filename("sounds/bd1.ogg", &channels, &sample_rate, &walk_sound_samples);
+  }
+
+  const int kFrequency = 44100;  // Sample frames per second
+  const int kChannels = 2;
+  const int kCallbackSampleFrames = 4096;                                           //
+  const int kCallbackBuffersPerMinute = (kFrequency / kCallbackSampleFrames) * 60;  // approximately
 
   SDL_AudioSpec desired_audiospec = {};
   SDL_AudioSpec audiospec = {};
-  desired_audiospec.freq = sample_rate;
+  desired_audiospec.freq = kFrequency;
   desired_audiospec.format = AUDIO_S16;
-  desired_audiospec.channels = channels;
-  desired_audiospec.samples = 4096;
+  desired_audiospec.channels = kChannels;
+  desired_audiospec.samples = kCallbackSampleFrames;
   desired_audiospec.callback = audio_callback;
 
-  AudioData audiodata = {};
-  audiodata.start = samples;
-  audiodata.offset = 0;
-  audiodata.len_samples = len_samples;
+  AudioBuffer audio_buffer = {};
+  audio_buffer.size =
+      kCallbackBuffersPerMinute * kCallbackSampleFrames * kChannels;  // enough samples for a minute
+  audio_buffer.start = malloc(audio_buffer.size * sizeof(short));
+  audio_buffer.cursor = 0;
 
-  desired_audiospec.userdata = &audiodata;
+  desired_audiospec.userdata = &audio_buffer;
 
   SDL_AudioDeviceID audio_device_id =
       SDL_OpenAudioDevice(NULL, 0, &desired_audiospec, &audiospec, 0);
@@ -252,6 +264,8 @@ int main() {
     printf("Failed to open audio: %s\n", SDL_GetError());
     return 1;
   }
+  audio_buffer.audio_device_id = audio_device_id;
+
   SDL_PauseAudioDevice(audio_device_id, 0);
 
   SDL_Window *window =
@@ -488,6 +502,7 @@ int main() {
         level[next_player_pos.y][next_player_pos.x] = 'E';
         player_pos = next_player_pos;
         player_last_move_time = time_now();
+        play_sound(&audio_buffer, walk_sound_samples, walk_sound_size);
       }
 
       // Move rock
