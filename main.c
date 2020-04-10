@@ -1,6 +1,7 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_audio.h>
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -205,20 +206,40 @@ typedef struct {
   short *start;
   int cursor;
   int size;  // in samples
+  u64 start_time;
   SDL_AudioDeviceID audio_device_id;
+  double len_in_seconds;
 } AudioBuffer;
 
 void audio_callback(void *userdata, u8 *stream, int len) {
-  AudioBuffer *audio_buffer = userdata;
-  assert((audio_buffer->size * sizeof(short)) % len == 0);
-  SDL_memcpy(stream, audio_buffer->start + audio_buffer->cursor, len);
-  audio_buffer->cursor += len / sizeof(short);
-  audio_buffer->cursor %= audio_buffer->size;
+  AudioBuffer *buffer = userdata;
+  assert((buffer->size * sizeof(short)) % len == 0);
+  double current_time = seconds_since(buffer->start_time);
+  if (isinf(current_time)) return;
+  int read_cursor = (int)((current_time / buffer->len_in_seconds) * (double)(buffer->size));
+  SDL_memcpy(stream, buffer->start + read_cursor, len);
+  buffer->cursor += len / sizeof(short);
+  buffer->cursor %= buffer->size;
+  static double last_call;
+  double time = seconds_since(buffer->start_time);
+  printf("audio callback %f\n", time - last_call);
+  last_call = time;
 }
 
 void play_sound(AudioBuffer *buffer, short *samples, int len_samples) {
   SDL_LockAudioDevice(buffer->audio_device_id);
-  SDL_memcpy(buffer->start + buffer->cursor, samples, len_samples * sizeof(short));
+  int write_cursor =
+      (int)((seconds_since(buffer->start_time) / buffer->len_in_seconds) * (double)(buffer->size));
+  // assert(write_cursor >= buffer->cursor);
+  // if (write_cursor < buffer->cursor) {
+  //   write_cursor = buffer->cursor;
+  // }
+  write_cursor += 1000;
+  printf("%d\n", buffer->cursor - write_cursor);
+
+  // SDL_memcpy(buffer->start + buffer->cursor, samples, len_samples * sizeof(short));
+  SDL_MixAudioFormat((u8 *)(buffer->start + write_cursor), (u8 *)samples, AUDIO_S16,
+                     len_samples * sizeof(short), SDL_MIX_MAXVOLUME);
   SDL_UnlockAudioDevice(buffer->audio_device_id);
 }
 
@@ -239,8 +260,9 @@ int main() {
 
   const int kFrequency = 44100;  // Sample frames per second
   const int kChannels = 2;
-  const int kCallbackSampleFrames = 4096;                                           //
-  const int kCallbackBuffersPerMinute = (kFrequency / kCallbackSampleFrames) * 60;  // approximately
+  const int kCallbackSampleFrames = 4096;  //
+  const int kCallbackBuffersPerMinute =
+      (int)(((double)kFrequency / (double)kCallbackSampleFrames) * 60.0);  // approximately
 
   SDL_AudioSpec desired_audiospec = {};
   SDL_AudioSpec audiospec = {};
@@ -255,6 +277,9 @@ int main() {
       kCallbackBuffersPerMinute * kCallbackSampleFrames * kChannels;  // enough samples for a minute
   audio_buffer.start = malloc(audio_buffer.size * sizeof(short));
   audio_buffer.cursor = 0;
+  audio_buffer.len_in_seconds =
+      (double)kCallbackBuffersPerMinute * (double)kCallbackSampleFrames / (double)kFrequency;
+  audio_buffer.start_time = time_now();
 
   desired_audiospec.userdata = &audio_buffer;
 
