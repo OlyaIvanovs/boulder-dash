@@ -214,32 +214,36 @@ typedef struct {
 void audio_callback(void *userdata, u8 *stream, int len) {
   AudioBuffer *buffer = userdata;
   assert((buffer->size * sizeof(short)) % len == 0);
-  double current_time = seconds_since(buffer->start_time);
-  if (isinf(current_time)) return;
-  int read_cursor = (int)((current_time / buffer->len_in_seconds) * (double)(buffer->size));
-  SDL_memcpy(stream, buffer->start + read_cursor, len);
+  if (buffer->start_time == 0) {
+    buffer->start_time = time_now();  // for the first call
+  }
+  SDL_memcpy(stream, buffer->start + buffer->cursor, len);
+  SDL_memset(buffer->start + buffer->cursor, 0, len);
   buffer->cursor += len / sizeof(short);
   buffer->cursor %= buffer->size;
-  static double last_call;
-  double time = seconds_since(buffer->start_time);
-  printf("audio callback %f\n", time - last_call);
-  last_call = time;
 }
 
 void play_sound(AudioBuffer *buffer, short *samples, int len_samples) {
   SDL_LockAudioDevice(buffer->audio_device_id);
-  int write_cursor =
-      (int)((seconds_since(buffer->start_time) / buffer->len_in_seconds) * (double)(buffer->size));
-  // assert(write_cursor >= buffer->cursor);
-  // if (write_cursor < buffer->cursor) {
-  //   write_cursor = buffer->cursor;
-  // }
-  write_cursor += 1000;
-  printf("%d\n", buffer->cursor - write_cursor);
+  // Calculate the write cursor based on how much time has passed relatively to
+  // the first audio_callback call
+  double buffers_passed = seconds_since(buffer->start_time) / buffer->len_in_seconds;
+  double whole_buffers;
+  int write_cursor = (int)((modf(buffers_passed, &whole_buffers)) * (double)(buffer->size));
+  write_cursor += 10000;  // experimentally obtained to put the write cursor ahead the buffer cursor
+  write_cursor %= buffer->size;
 
-  // SDL_memcpy(buffer->start + buffer->cursor, samples, len_samples * sizeof(short));
-  SDL_MixAudioFormat((u8 *)(buffer->start + write_cursor), (u8 *)samples, AUDIO_S16,
-                     len_samples * sizeof(short), SDL_MIX_MAXVOLUME);
+  if (write_cursor + len_samples > buffer->size) {
+    int chunk1_len_samples = buffer->size - write_cursor;
+    int chunk2_len_samples = len_samples - chunk1_len_samples;
+    SDL_MixAudioFormat((u8 *)(buffer->start + write_cursor), (u8 *)samples, AUDIO_S16,
+                       chunk1_len_samples * sizeof(short), SDL_MIX_MAXVOLUME);
+    SDL_MixAudioFormat((u8 *)buffer->start, (u8 *)(samples + chunk1_len_samples), AUDIO_S16,
+                       chunk2_len_samples * sizeof(short), SDL_MIX_MAXVOLUME);
+  } else {
+    SDL_MixAudioFormat((u8 *)(buffer->start + write_cursor), (u8 *)samples, AUDIO_S16,
+                       len_samples * sizeof(short), SDL_MIX_MAXVOLUME);
+  }
   SDL_UnlockAudioDevice(buffer->audio_device_id);
 }
 
@@ -247,6 +251,7 @@ int main() {
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO) < 0) {
     return 1;
   }
+  gPerformanceFrequency = (double)SDL_GetPerformanceFrequency();
 
   // Audio
   int walk_sound_size;
@@ -260,9 +265,9 @@ int main() {
 
   const int kFrequency = 44100;  // Sample frames per second
   const int kChannels = 2;
-  const int kCallbackSampleFrames = 4096;  //
+  const int kCallbackSampleFrames = 2048;
   const int kCallbackBuffersPerMinute =
-      (int)(((double)kFrequency / (double)kCallbackSampleFrames) * 60.0);  // approximately
+      (int)(((double)kFrequency / (double)kCallbackSampleFrames) * 30.0);  // approximately
 
   SDL_AudioSpec desired_audiospec = {};
   SDL_AudioSpec audiospec = {};
@@ -277,9 +282,8 @@ int main() {
       kCallbackBuffersPerMinute * kCallbackSampleFrames * kChannels;  // enough samples for a minute
   audio_buffer.start = malloc(audio_buffer.size * sizeof(short));
   audio_buffer.cursor = 0;
-  audio_buffer.len_in_seconds =
-      (double)kCallbackBuffersPerMinute * (double)kCallbackSampleFrames / (double)kFrequency;
-  audio_buffer.start_time = time_now();
+  audio_buffer.len_in_seconds = (double)audio_buffer.size / (double)(kFrequency * kChannels);
+  audio_buffer.start_time = 0;  // invalid time, will be replaced by audio_callback()
 
   desired_audiospec.userdata = &audio_buffer;
 
@@ -347,7 +351,6 @@ int main() {
 
   int num_loops = 0;
   u64 start = time_now();
-  gPerformanceFrequency = (double)SDL_GetPerformanceFrequency();
 
   bool rock_is_pushed = false;
   u64 rock_start_move_time = time_now();
