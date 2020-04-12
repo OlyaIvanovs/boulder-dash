@@ -1,5 +1,3 @@
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_audio.h>
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
@@ -7,11 +5,19 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "base.h"
+
+#include "audio.h"
 #include "levels.h"
 #include "lib/stb_image.h"
-#include "lib/stb_vorbis.c"
 
-#define COUNT(arr) (sizeof(arr) / sizeof(*arr))
+u64 time_now() {
+  return SDL_GetPerformanceCounter();
+}
+
+double seconds_since(u64 timestamp) {
+  return (double)(time_now() - timestamp) / gPerformanceFrequency;
+}
 
 typedef enum {
   COLOR_WHITE = 0,
@@ -19,13 +25,6 @@ typedef enum {
 } Color;
 
 typedef char Level[LEVEL_HEIGHT][LEVEL_WIDTH];
-
-typedef uint8_t u8;
-typedef uint16_t u16;
-typedef uint32_t u32;
-typedef uint64_t u64;
-
-static double gPerformanceFrequency;
 
 typedef struct {
   bool right;
@@ -76,14 +75,6 @@ typedef struct {
   int min_diamonds;
   int diamonds_collected;
 } LevelStatus;
-
-u64 time_now() {
-  return SDL_GetPerformanceCounter();
-}
-
-double seconds_since(u64 timestamp) {
-  return (double)(time_now() - timestamp) / gPerformanceFrequency;
-}
 
 v2 get_frame(Animation *animation) {
   v2 result;
@@ -202,51 +193,6 @@ void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digi
   }
 }
 
-typedef struct {
-  short *start;
-  int cursor;
-  int size;  // in samples
-  u64 start_time;
-  SDL_AudioDeviceID audio_device_id;
-  double len_in_seconds;
-} AudioBuffer;
-
-void audio_callback(void *userdata, u8 *stream, int len) {
-  AudioBuffer *buffer = userdata;
-  assert((buffer->size * sizeof(short)) % len == 0);
-  if (buffer->start_time == 0) {
-    buffer->start_time = time_now();  // for the first call
-  }
-  SDL_memcpy(stream, buffer->start + buffer->cursor, len);
-  SDL_memset(buffer->start + buffer->cursor, 0, len);
-  buffer->cursor += len / sizeof(short);
-  buffer->cursor %= buffer->size;
-}
-
-void play_sound(AudioBuffer *buffer, short *samples, int len_samples) {
-  SDL_LockAudioDevice(buffer->audio_device_id);
-  // Calculate the write cursor based on how much time has passed relatively to
-  // the first audio_callback call
-  double buffers_passed = seconds_since(buffer->start_time) / buffer->len_in_seconds;
-  double whole_buffers;
-  int write_cursor = (int)((modf(buffers_passed, &whole_buffers)) * (double)(buffer->size));
-  write_cursor += 10000;  // experimentally obtained to put the write cursor ahead the buffer cursor
-  write_cursor %= buffer->size;
-
-  if (write_cursor + len_samples > buffer->size) {
-    int chunk1_len_samples = buffer->size - write_cursor;
-    int chunk2_len_samples = len_samples - chunk1_len_samples;
-    SDL_MixAudioFormat((u8 *)(buffer->start + write_cursor), (u8 *)samples, AUDIO_S16,
-                       chunk1_len_samples * sizeof(short), SDL_MIX_MAXVOLUME);
-    SDL_MixAudioFormat((u8 *)buffer->start, (u8 *)(samples + chunk1_len_samples), AUDIO_S16,
-                       chunk2_len_samples * sizeof(short), SDL_MIX_MAXVOLUME);
-  } else {
-    SDL_MixAudioFormat((u8 *)(buffer->start + write_cursor), (u8 *)samples, AUDIO_S16,
-                       len_samples * sizeof(short), SDL_MIX_MAXVOLUME);
-  }
-  SDL_UnlockAudioDevice(buffer->audio_device_id);
-}
-
 int main() {
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO) < 0) {
     return 1;
@@ -254,48 +200,11 @@ int main() {
   gPerformanceFrequency = (double)SDL_GetPerformanceFrequency();
 
   // Audio
-  int walk_sound_size;
-  short *walk_sound_samples;
-  {
-    int channels;
-    int sample_rate;
-    walk_sound_size =
-        stb_vorbis_decode_filename("sounds/bd1.ogg", &channels, &sample_rate, &walk_sound_samples);
-  }
-
-  const int kFrequency = 44100;  // Sample frames per second
-  const int kChannels = 2;
-  const int kCallbackSampleFrames = 2048;
-  const int kCallbackBuffersPerMinute =
-      (int)(((double)kFrequency / (double)kCallbackSampleFrames) * 30.0);  // approximately
-
-  SDL_AudioSpec desired_audiospec = {};
-  SDL_AudioSpec audiospec = {};
-  desired_audiospec.freq = kFrequency;
-  desired_audiospec.format = AUDIO_S16;
-  desired_audiospec.channels = kChannels;
-  desired_audiospec.samples = kCallbackSampleFrames;
-  desired_audiospec.callback = audio_callback;
-
-  AudioBuffer audio_buffer = {};
-  audio_buffer.size =
-      kCallbackBuffersPerMinute * kCallbackSampleFrames * kChannels;  // enough samples for a minute
-  audio_buffer.start = malloc(audio_buffer.size * sizeof(short));
-  audio_buffer.cursor = 0;
-  audio_buffer.len_in_seconds = (double)audio_buffer.size / (double)(kFrequency * kChannels);
-  audio_buffer.start_time = 0;  // invalid time, will be replaced by audio_callback()
-
-  desired_audiospec.userdata = &audio_buffer;
-
-  SDL_AudioDeviceID audio_device_id =
-      SDL_OpenAudioDevice(NULL, 0, &desired_audiospec, &audiospec, 0);
+  SDL_AudioDeviceID audio_device_id = init_audio();
   if (audio_device_id == 0) {
-    printf("Failed to open audio: %s\n", SDL_GetError());
+    printf("Couldn't init audio\n");
     return 1;
   }
-  audio_buffer.audio_device_id = audio_device_id;
-
-  SDL_PauseAudioDevice(audio_device_id, 0);
 
   SDL_Window *window =
       SDL_CreateWindow("Boulder-Dash", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 960, 480,
@@ -452,6 +361,8 @@ int main() {
 
   int score = 0;
 
+  play_sound(SOUND_BD1);
+
   int is_running = 1;
   while (is_running) {
     bool white_tunnel = false;
@@ -530,7 +441,7 @@ int main() {
         level[next_player_pos.y][next_player_pos.x] = 'E';
         player_pos = next_player_pos;
         player_last_move_time = time_now();
-        play_sound(&audio_buffer, walk_sound_samples, walk_sound_size);
+        play_sound(SOUND_WALK_D);
       }
 
       // Move rock
