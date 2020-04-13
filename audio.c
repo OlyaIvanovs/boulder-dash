@@ -3,7 +3,7 @@
 
 // Both will be initialised by init_audio()
 static Sound *gSounds;
-static AudioBuffer *gBuffer;
+static AudioBuffer gBuffer;
 
 Sound *load_all_sounds() {
   char *file_names[] = {
@@ -29,15 +29,27 @@ Sound *load_all_sounds() {
     int sample_rate;
     sound->len_samples =
         stb_vorbis_decode_filename(file_name, &channels, &sample_rate, &sound->samples);
-    // assert(channels == 2);
-    // assert(sample_rate == 44100);
+    if (channels == 1) {
+      // Make two channels out of one by duplicating each sample
+      short *new_samples = malloc(2 * sound->len_samples * sizeof(short));
+      for (int i = 0; i < sound->len_samples; ++i) {
+        short sample = sound->samples[i];
+        new_samples[2 * i] = sample;
+        new_samples[2 * i + 1] = sample;
+      }
+      sound->len_samples *= 2;
+      free(sound->samples);
+      sound->samples = new_samples;
+    }
+    assert(channels <= 2);
+    assert(sample_rate == 44100);
   }
 
   return sounds;
 }
 
 void audio_callback(void *userdata, u8 *stream, int len) {
-  AudioBuffer *buffer = gBuffer;
+  AudioBuffer *buffer = &gBuffer;
   assert((buffer->size * sizeof(short)) % len == 0);
   if (buffer->start_time == 0) {
     buffer->start_time = time_now();  // for the first call
@@ -49,7 +61,7 @@ void audio_callback(void *userdata, u8 *stream, int len) {
 }
 
 void play_sound(SoundId sound_id) {
-  AudioBuffer *buffer = gBuffer;
+  AudioBuffer *buffer = &gBuffer;
   Sound sound = gSounds[sound_id];
 
   SDL_LockAudioDevice(buffer->audio_device_id);
@@ -102,13 +114,14 @@ SDL_AudioDeviceID init_audio() {
   }
 
   // Init buffer
-  gBuffer->size =
+  gBuffer.size =
       kCallbackBuffersPerMinute * kCallbackSampleFrames * kChannels;  // enough samples for a minute
-  gBuffer->start = malloc(gBuffer->size * sizeof(short));
-  gBuffer->cursor = 0;
-  gBuffer->len_in_seconds = (double)gBuffer->size / (double)(kFrequency * kChannels);
-  gBuffer->start_time = 0;  // invalid time, will be replaced by audio_callback()
-  gBuffer->audio_device_id = audio_device_id;
+  gBuffer.start = malloc(gBuffer.size * sizeof(short));
+  SDL_memset(gBuffer.start, 0, gBuffer.size);
+  gBuffer.cursor = 0;
+  gBuffer.len_in_seconds = (double)gBuffer.size / (double)(kFrequency * kChannels);
+  gBuffer.start_time = 0;  // invalid time, will be replaced by audio_callback()
+  gBuffer.audio_device_id = audio_device_id;
 
   SDL_PauseAudioDevice(audio_device_id, 0);
 

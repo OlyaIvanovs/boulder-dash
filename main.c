@@ -428,6 +428,7 @@ int main() {
       if (can_move(level, next_player_pos)) {
         if (level[next_player_pos.y][next_player_pos.x] == 'd') {
           collect_diamond(&diamonds, next_player_pos);
+          play_sound(SOUND_DIAMOND_1);
           status.diamonds_collected += 1;
           score += status.score_per_diamond;
           if (status.diamonds_collected == status.min_diamonds) {
