@@ -3,8 +3,19 @@
 - out of time
 - drop after move
 
+sounds:
+- diamond fall cycle sounds
+- rock sound on fall
+- slower walking sound
+- regulate mix volume
+
+
 
 DONE
+13.04.2020
+- fix audio module
+- add sounds
+
 03.04.2020
 -
 

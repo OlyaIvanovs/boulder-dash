@@ -428,7 +428,6 @@ int main() {
       if (can_move(level, next_player_pos)) {
         if (level[next_player_pos.y][next_player_pos.x] == 'd') {
           collect_diamond(&diamonds, next_player_pos);
-          play_sound(SOUND_DIAMOND_1);
           status.diamonds_collected += 1;
           score += status.score_per_diamond;
           if (status.diamonds_collected == status.min_diamonds) {
@@ -436,6 +435,9 @@ int main() {
             anim_exit.num_frames = 2;
             anim_exit.start_frame.x = 32;
             white_tunnel = true;
+            play_sound(SOUND_CRACK);
+          } else {
+            play_sound(SOUND_DIAMOND_COLLECT);
           }
         }
         level[player_pos.y][player_pos.x] = '_';
