@@ -362,6 +362,7 @@ int main() {
   int score = 0;
 
   play_sound(SOUND_BD1);
+  int walking_sound_cooldown = 1;
 
   int is_running = 1;
   while (is_running) {
@@ -440,11 +441,16 @@ int main() {
             play_sound(SOUND_DIAMOND_COLLECT);
           }
         }
+
         level[player_pos.y][player_pos.x] = '_';
         level[next_player_pos.y][next_player_pos.x] = 'E';
         player_pos = next_player_pos;
         player_last_move_time = time_now();
-        play_sound(SOUND_WALK_D);
+        // play_sound(SOUND_WALK_D);
+        if (walking_sound_cooldown-- == 0) {
+          play_sound(SOUND_WALK_D);
+          walking_sound_cooldown = 1;
+        }
       }
 
       // Move rock
