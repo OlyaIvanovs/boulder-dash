@@ -117,19 +117,43 @@ void add_lock(Lock *locks, int x, int y) {
 }
 
 void drop_objects(Level level, Objects *objects, char obj_sym, Lock *locks) {
+  bool play_fall_sound = false;
+
   for (int i = 0; i < objects->num; i++) {
     int x = objects->objects[i].x;
     int y = objects->objects[i].y;
-    char tile_under = level[y + 1][x];
-    char tile_above = level[y - 1][x];
     assert(level[y][x] == obj_sym);
+
+    char tile_above = level[y - 1][x];
+    char tile_under = level[y + 1][x];
+    char tile_under_under = level[y + 2][x];
+
     if (tile_under == '_') {
       // Drop down
       level[y][x] = '_';
       level[y + 1][x] = obj_sym;
       objects->objects[i].y += 1;
-      continue;
+
+      // Determine whether we play sound.
+      // Check every tile below and play sound only if falling on
+      // a steady ground or on a stack of boulders that are already
+      // on the ground
+      play_fall_sound = true;  // in case we never enter the loop
+      for (int i = y + 2; i < LEVEL_HEIGHT; ++i) {
+        char tile = level[i][x];
+        if (tile == '_') {
+          play_fall_sound = false;  // the rock is still falling
+          break;
+        }
+        if (tile == '.' || tile == 'W' || tile == 'w') {
+          play_fall_sound = true;
+          break;  // falling on solid ground.
+        }
+      }
+      continue;  // don't check if we can slide
     }
+
+    // Slide off rocks and diamonds
     if ((tile_under == 'r' || tile_under == 'd') &&
         (tile_above != 'd' && tile_above != 'r' && tile_above != 'l')) {
       if (level[y][x - 1] == '_' && level[y + 1][x - 1] == '_') {
@@ -148,6 +172,16 @@ void drop_objects(Level level, Objects *objects, char obj_sym, Lock *locks) {
         objects->objects[i].x += 1;
         continue;
       }
+    }
+  }
+
+  if (play_fall_sound) {
+    if (obj_sym == 'r') {
+      play_sound(SOUND_STONE);
+    } else if (obj_sym == 'd') {
+      static int diamond_sound_num = 0;
+      play_sound(SOUND_DIAMOND_1 + diamond_sound_num);
+      diamond_sound_num = (diamond_sound_num + 1) % 7;
     }
   }
 }
@@ -442,15 +476,19 @@ int main() {
           }
         }
 
+        SoundId walking_sound = SOUND_WALK_D;
+        if (level[next_player_pos.y][next_player_pos.x] == '.') {
+          walking_sound = SOUND_WALK_E;
+        }
+        if (walking_sound_cooldown-- == 0) {
+          play_sound(walking_sound);
+          walking_sound_cooldown = 1;
+        }
+
         level[player_pos.y][player_pos.x] = '_';
         level[next_player_pos.y][next_player_pos.x] = 'E';
         player_pos = next_player_pos;
         player_last_move_time = time_now();
-        // play_sound(SOUND_WALK_D);
-        if (walking_sound_cooldown-- == 0) {
-          play_sound(SOUND_WALK_D);
-          walking_sound_cooldown = 1;
-        }
       }
 
       // Move rock
