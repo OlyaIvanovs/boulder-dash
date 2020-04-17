@@ -24,7 +24,7 @@ typedef enum {
   COLOR_YELLOW,
 } Color;
 
-typedef char Level[LEVEL_HEIGHT][LEVEL_WIDTH];
+typedef char Tiles[LEVEL_HEIGHT][LEVEL_WIDTH];
 
 typedef struct {
   bool right;
@@ -44,16 +44,14 @@ static inline v2 V2(int x, int y) {
 }
 
 typedef struct {
-  int num;
   v2 objects[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
+  int num;
 } Objects;
 
 typedef struct {
-  int lifetime;
   v2 pos;
+  int lifetime;
 } Lock;
-
-#define NUM_LOCKS 10
 
 typedef struct {
   u64 start_time;
@@ -69,12 +67,51 @@ typedef struct {
   int tile_size;
 } DrawContext;
 
-typedef struct {
-  u64 time_left;
+typedef struct Level {
+  Tiles tiles;
+  Objects diamonds;
+  Objects rocks;
+  Lock locks[10];
+  v2 player_pos;
+  int time_left;
   int score_per_diamond;
   int min_diamonds;
-  int diamonds_collected;
-} LevelStatus;
+} Level;
+
+void load_level(Level *level, int num_level) {
+  SDL_memcpy(level->tiles, gLevels[num_level], LEVEL_HEIGHT * LEVEL_WIDTH);
+
+  SDL_memset(&level->rocks, 0, sizeof(level->rocks));
+  SDL_memset(&level->diamonds, 0, sizeof(level->diamonds));
+  SDL_memset(level->locks, 0, sizeof(level->locks));
+
+  for (int y = 0; y < LEVEL_HEIGHT; ++y) {
+    for (int x = 0; x < LEVEL_WIDTH; ++x) {
+      if (level[y][x] == 'E') {
+        level->player_pos.x = x;
+        level->player_pos.y = y;
+      }
+
+      if (level[y][x] == 'r') {
+        level->rocks.objects[level->rocks.num].x = x;
+        level->rocks.objects[level->rocks.num].y = y;
+        level->rocks.num++;
+        assert(level->rocks.num < COUNT(level->rocks.objects));
+      }
+
+      if (level[y][x] == 'd') {
+        level->diamonds.objects[level->diamonds.num].x = x;
+        level->diamonds.objects[level->diamonds.num].y = y;
+        level->diamonds.num++;
+        assert(level->diamonds.num < COUNT(level->diamonds.objects));
+      }
+    }
+  }
+
+  level.time_left = 150;
+  level.score_per_diamond = 10;
+  level.min_diamonds = diamonds.num / 6;
+}
 
 v2 get_frame(Animation *animation) {
   v2 result;
@@ -154,7 +191,7 @@ void drop_objects(Level level, Objects *objects, char obj_sym, Lock *locks) {
     }
 
     // Slide off rocks and diamonds
-    if ((tile_under == 'r' || tile_under == 'd') &&
+    if ((tile_under == 'r' || tile_under == 'd' || tile_under == 'w') &&
         (tile_above != 'd' && tile_above != 'r' && tile_above != 'l')) {
       if (level[y][x - 1] == '_' && level[y + 1][x - 1] == '_') {
         // Drop left
@@ -351,39 +388,9 @@ int main() {
   anim_exit.start_frame.y = 192;
 
   // Init level
-  char level[LEVEL_HEIGHT][LEVEL_WIDTH];
-  memcpy(level, cave_1, LEVEL_HEIGHT * LEVEL_WIDTH);
-
-  Objects rocks = {};
-  Objects diamonds = {};
-  Lock locks[NUM_LOCKS] = {};
-  v2 player_pos = {};
-
-  for (int y = 0; y < LEVEL_HEIGHT; ++y) {
-    for (int x = 0; x < LEVEL_WIDTH; ++x) {
-      if (level[y][x] == 'E') {
-        player_pos.x = x;
-        player_pos.y = y;
-      }
-      if (level[y][x] == 'r') {
-        rocks.objects[rocks.num].x = x;
-        rocks.objects[rocks.num].y = y;
-        rocks.num++;
-        assert(rocks.num < COUNT(rocks.objects));
-      }
-      if (level[y][x] == 'd') {
-        diamonds.objects[diamonds.num].x = x;
-        diamonds.objects[diamonds.num].y = y;
-        diamonds.num++;
-        assert(diamonds.num < COUNT(diamonds.objects));
-      }
-    }
-  }
-
-  LevelStatus status = {};
-  status.time_left = 150;
-  status.score_per_diamond = 10;
-  status.min_diamonds = diamonds.num / 6;
+  // char level[LEVEL_HEIGHT][LEVEL_WIDTH];
+  Level level = {};
+  load_level(&level, 0);
 
   u64 player_last_move_time = start;
   u64 drop_last_time = start;
@@ -447,6 +454,8 @@ int main() {
     }
 
     // Move player
+    v2 player_pos = level.player_pos;
+
     if (seconds_since(player_last_move_time) > kPlayerDelay) {
       v2 next_player_pos = player_pos;
 
