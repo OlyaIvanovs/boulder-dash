@@ -77,6 +77,7 @@ typedef struct Level {
   int score_per_diamond;
   int min_diamonds;
   int diamonds_collected;
+  bool can_exit;
 } Level;
 
 void load_level(Level *level, int num_level) {
@@ -112,6 +113,7 @@ void load_level(Level *level, int num_level) {
   level->time_left = 150;
   level->score_per_diamond = 10;
   level->min_diamonds = level->diamonds.num / 6;
+  level->can_exit = false;
 }
 
 v2 get_frame(Animation *animation) {
@@ -128,7 +130,8 @@ bool can_move(Level *level, v2 pos) {
     return false;
   }
   char tile_type = level->tiles[pos.y][pos.x];
-  if (tile_type == ' ' || tile_type == '.' || tile_type == '_' || tile_type == 'd') {
+  if (tile_type == ' ' || tile_type == '.' || tile_type == '_' || tile_type == 'd' ||
+      (tile_type == 'X' && level->can_exit)) {
     return true;
   }
   return false;
@@ -398,7 +401,8 @@ int main() {
 
   // Init level
   Level level = {};
-  load_level(&level, 0);
+  int level_id = 0;
+  load_level(&level, level_id);
 
   u64 player_last_move_time = start;
   u64 drop_last_time = start;
@@ -476,7 +480,8 @@ int main() {
       }
 
       if (can_move(&level, next_player_pos)) {
-        if (level.tiles[next_player_pos.y][next_player_pos.x] == 'd') {
+        char next_tile = level.tiles[next_player_pos.y][next_player_pos.x];
+        if (next_tile == 'd') {
           collect_diamond(&level.diamonds, next_player_pos);
           level.diamonds_collected += 1;
           score += level.score_per_diamond;
@@ -485,14 +490,21 @@ int main() {
             anim_exit.num_frames = 2;
             anim_exit.start_frame.x = 32;
             white_tunnel = true;
+            level.can_exit = true;
             play_sound(SOUND_CRACK);
           } else {
             play_sound(SOUND_DIAMOND_COLLECT);
           }
         }
 
+        if (next_tile == 'X') {
+          play_sound(SOUND_FINISHED);
+          load_level(&level, ++level_id);
+          continue;
+        }
+
         SoundId walking_sound = SOUND_WALK_D;
-        if (level.tiles[next_player_pos.y][next_player_pos.x] == '.') {
+        if (next_tile == '.') {
           walking_sound = SOUND_WALK_E;
         }
         if (walking_sound_cooldown-- == 0) {
