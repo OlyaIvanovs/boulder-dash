@@ -484,7 +484,9 @@ static char cave_20[LEVEL_HEIGHT][LEVEL_WIDTH] = {
     {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'}};
 // clang-format on
 
-static char gLevels[20] = {
-    cave_1,  cave_2,  cave_3,  cave_4,  cave_5,  cave_6,  cave_7,  cave_8,  cave_9,  cave_10,
-    cave_11, cave_12, cave_13, cave_14, cave_15, cave_16, cave_17, cave_18, cave_19, cave_20,
+static char *gLevels[20] = {
+    (char *)cave_1,  (char *)cave_2,  (char *)cave_3,  (char *)cave_4,  (char *)cave_5,
+    (char *)cave_6,  (char *)cave_7,  (char *)cave_8,  (char *)cave_9,  (char *)cave_10,
+    (char *)cave_11, (char *)cave_12, (char *)cave_13, (char *)cave_14, (char *)cave_15,
+    (char *)cave_16, (char *)cave_17, (char *)cave_18, (char *)cave_19, (char *)cave_20,
 };

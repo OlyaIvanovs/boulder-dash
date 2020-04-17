@@ -54,9 +54,9 @@ typedef struct {
 } Lock;
 
 typedef struct {
+  v2 start_frame;
   u64 start_time;
   int num_frames;
-  v2 start_frame;
   int fps;
 } Animation;
 
@@ -76,6 +76,7 @@ typedef struct Level {
   int time_left;
   int score_per_diamond;
   int min_diamonds;
+  int diamonds_collected;
 } Level;
 
 void load_level(Level *level, int num_level) {
@@ -87,19 +88,19 @@ void load_level(Level *level, int num_level) {
 
   for (int y = 0; y < LEVEL_HEIGHT; ++y) {
     for (int x = 0; x < LEVEL_WIDTH; ++x) {
-      if (level[y][x] == 'E') {
+      if (level->tiles[y][x] == 'E') {
         level->player_pos.x = x;
         level->player_pos.y = y;
       }
 
-      if (level[y][x] == 'r') {
+      if (level->tiles[y][x] == 'r') {
         level->rocks.objects[level->rocks.num].x = x;
         level->rocks.objects[level->rocks.num].y = y;
         level->rocks.num++;
         assert(level->rocks.num < COUNT(level->rocks.objects));
       }
 
-      if (level[y][x] == 'd') {
+      if (level->tiles[y][x] == 'd') {
         level->diamonds.objects[level->diamonds.num].x = x;
         level->diamonds.objects[level->diamonds.num].y = y;
         level->diamonds.num++;
@@ -108,9 +109,9 @@ void load_level(Level *level, int num_level) {
     }
   }
 
-  level.time_left = 150;
-  level.score_per_diamond = 10;
-  level.min_diamonds = diamonds.num / 6;
+  level->time_left = 150;
+  level->score_per_diamond = 10;
+  level->min_diamonds = level->diamonds.num / 6;
 }
 
 v2 get_frame(Animation *animation) {
@@ -122,27 +123,27 @@ v2 get_frame(Animation *animation) {
   return result;
 }
 
-bool can_move(Level level, v2 pos) {
+bool can_move(Level *level, v2 pos) {
   if (pos.x < 0 || pos.x >= LEVEL_WIDTH || pos.y < 0 || pos.y >= LEVEL_HEIGHT) {
     return false;
   }
-  char tile_type = level[pos.y][pos.x];
+  char tile_type = level->tiles[pos.y][pos.x];
   if (tile_type == ' ' || tile_type == '.' || tile_type == '_' || tile_type == 'd') {
     return true;
   }
   return false;
 }
 
-bool can_move_rock(Level level, v2 pos, v2 next_pos) {
-  if (((pos.x < next_pos.x) && (level[pos.y][next_pos.x + 1] == '_')) ||
-      ((pos.x > next_pos.x) && (level[pos.y][next_pos.x - 1] == '_'))) {
+bool can_move_rock(Level *level, v2 pos, v2 next_pos) {
+  if (((pos.x < next_pos.x) && (level->tiles[pos.y][next_pos.x + 1] == '_')) ||
+      ((pos.x > next_pos.x) && (level->tiles[pos.y][next_pos.x - 1] == '_'))) {
     return true;
   }
   return false;
 }
 
 void add_lock(Lock *locks, int x, int y) {
-  for (int i = 0; i < NUM_LOCKS; i++) {
+  for (int i = 0; i < sizeof(&locks); i++) {
     if (locks[i].lifetime == 0) {
       locks[i].lifetime = 2;
       locks[i].pos.x = x;
@@ -153,23 +154,31 @@ void add_lock(Lock *locks, int x, int y) {
   assert(!"Not enough space for locks");
 }
 
-void drop_objects(Level level, Objects *objects, char obj_sym, Lock *locks) {
+void drop_objects(Level *level, char obj_sym) {
   bool play_fall_sound = false;
+  Objects *objs;
 
-  for (int i = 0; i < objects->num; i++) {
-    int x = objects->objects[i].x;
-    int y = objects->objects[i].y;
-    assert(level[y][x] == obj_sym);
+  if (obj_sym == 'd') {
+    objs = &level->diamonds;
+  } else if (obj_sym == 'r') {
+    objs = &level->rocks;
+  } else {
+    assert(!"Unknown obj sym");
+  }
 
-    char tile_above = level[y - 1][x];
-    char tile_under = level[y + 1][x];
-    char tile_under_under = level[y + 2][x];
+  for (int i = 0; i < objs->num; i++) {
+    int x = objs->objects[i].x;
+    int y = objs->objects[i].y;
+    assert(level->tiles[y][x] == obj_sym);
+
+    char tile_above = level->tiles[y - 1][x];
+    char tile_under = level->tiles[y + 1][x];
 
     if (tile_under == '_') {
       // Drop down
-      level[y][x] = '_';
-      level[y + 1][x] = obj_sym;
-      objects->objects[i].y += 1;
+      level->tiles[y][x] = '_';
+      level->tiles[y + 1][x] = obj_sym;
+      objs->objects[i].y += 1;
 
       // Determine whether we play sound.
       // Check every tile below and play sound only if falling on
@@ -177,7 +186,7 @@ void drop_objects(Level level, Objects *objects, char obj_sym, Lock *locks) {
       // on the ground
       play_fall_sound = true;  // in case we never enter the loop
       for (int i = y + 2; i < LEVEL_HEIGHT; ++i) {
-        char tile = level[i][x];
+        char tile = level->tiles[i][x];
         if (tile == '_') {
           play_fall_sound = false;  // the rock is still falling
           break;
@@ -193,20 +202,20 @@ void drop_objects(Level level, Objects *objects, char obj_sym, Lock *locks) {
     // Slide off rocks and diamonds
     if ((tile_under == 'r' || tile_under == 'd' || tile_under == 'w') &&
         (tile_above != 'd' && tile_above != 'r' && tile_above != 'l')) {
-      if (level[y][x - 1] == '_' && level[y + 1][x - 1] == '_') {
+      if (level->tiles[y][x - 1] == '_' && level->tiles[y + 1][x - 1] == '_') {
         // Drop left
-        level[y][x] = 'l';
-        add_lock(locks, x, y);
-        level[y][x - 1] = obj_sym;
-        objects->objects[i].x -= 1;
+        level->tiles[y][x] = 'l';
+        add_lock(level->locks, x, y);
+        level->tiles[y][x - 1] = obj_sym;
+        objs->objects[i].x -= 1;
         continue;
       }
-      if (level[y][x + 1] == '_' && level[y + 1][x + 1] == '_') {
+      if (level->tiles[y][x + 1] == '_' && level->tiles[y + 1][x + 1] == '_') {
         // Drop right
-        level[y][x] = 'l';
-        add_lock(locks, x, y);
-        level[y][x + 1] = obj_sym;
-        objects->objects[i].x += 1;
+        level->tiles[y][x] = 'l';
+        add_lock(level->locks, x, y);
+        level->tiles[y][x + 1] = obj_sym;
+        objs->objects[i].x += 1;
         continue;
       }
     }
@@ -388,7 +397,6 @@ int main() {
   anim_exit.start_frame.y = 192;
 
   // Init level
-  // char level[LEVEL_HEIGHT][LEVEL_WIDTH];
   Level level = {};
   load_level(&level, 0);
 
@@ -454,10 +462,8 @@ int main() {
     }
 
     // Move player
-    v2 player_pos = level.player_pos;
-
     if (seconds_since(player_last_move_time) > kPlayerDelay) {
-      v2 next_player_pos = player_pos;
+      v2 next_player_pos = level.player_pos;
 
       if (input.right) {
         next_player_pos.x += 1;
@@ -469,13 +475,13 @@ int main() {
         next_player_pos.y += 1;
       }
 
-      if (can_move(level, next_player_pos)) {
-        if (level[next_player_pos.y][next_player_pos.x] == 'd') {
-          collect_diamond(&diamonds, next_player_pos);
-          status.diamonds_collected += 1;
-          score += status.score_per_diamond;
-          if (status.diamonds_collected == status.min_diamonds) {
-            status.score_per_diamond = 20;
+      if (can_move(&level, next_player_pos)) {
+        if (level.tiles[next_player_pos.y][next_player_pos.x] == 'd') {
+          collect_diamond(&level.diamonds, next_player_pos);
+          level.diamonds_collected += 1;
+          score += level.score_per_diamond;
+          if (level.diamonds_collected == level.min_diamonds) {
+            level.score_per_diamond = 20;
             anim_exit.num_frames = 2;
             anim_exit.start_frame.x = 32;
             white_tunnel = true;
@@ -486,7 +492,7 @@ int main() {
         }
 
         SoundId walking_sound = SOUND_WALK_D;
-        if (level[next_player_pos.y][next_player_pos.x] == '.') {
+        if (level.tiles[next_player_pos.y][next_player_pos.x] == '.') {
           walking_sound = SOUND_WALK_E;
         }
         if (walking_sound_cooldown-- == 0) {
@@ -494,48 +500,48 @@ int main() {
           walking_sound_cooldown = 1;
         }
 
-        level[player_pos.y][player_pos.x] = '_';
-        level[next_player_pos.y][next_player_pos.x] = 'E';
-        player_pos = next_player_pos;
+        level.tiles[level.player_pos.y][level.player_pos.x] = '_';
+        level.tiles[next_player_pos.y][next_player_pos.x] = 'E';
+        level.player_pos = next_player_pos;
         player_last_move_time = time_now();
       }
 
       // Move rock
-      if (can_move_rock(level, player_pos, next_player_pos)) {
+      if (can_move_rock(&level, level.player_pos, next_player_pos)) {
         if (!rock_is_pushed) {
           rock_start_move_time = time_now();
           rock_is_pushed = true;
         } else if (seconds_since(rock_start_move_time) > 0.5f) {
           int rock_next_x;
-          if (player_pos.x < next_player_pos.x) {
+          if (level.player_pos.x < next_player_pos.x) {
             rock_next_x = next_player_pos.x + 1;
           } else {
             rock_next_x = next_player_pos.x - 1;
           }
 
-          level[player_pos.y][player_pos.x] = '_';
-          level[next_player_pos.y][next_player_pos.x] = 'E';
+          level.tiles[level.player_pos.y][level.player_pos.x] = '_';
+          level.tiles[next_player_pos.y][next_player_pos.x] = 'E';
 
-          for (int i = 0; i < rocks.num; i++) {
-            if (rocks.objects[i].x == next_player_pos.x &&
-                rocks.objects[i].y == next_player_pos.y) {
-              rocks.objects[i].x = rock_next_x;
-              level[next_player_pos.y][rock_next_x] = 'r';
+          for (int i = 0; i < level.rocks.num; i++) {
+            if (level.rocks.objects[i].x == next_player_pos.x &&
+                level.rocks.objects[i].y == next_player_pos.y) {
+              level.rocks.objects[i].x = rock_next_x;
+              level.tiles[next_player_pos.y][rock_next_x] = 'r';
               break;
             }
           }
-          player_pos = next_player_pos;
+          level.player_pos = next_player_pos;
         }
       }
 
-      if (player_pos.x == next_player_pos.x) {
+      if (level.player_pos.x == next_player_pos.x) {
         rock_start_move_time = time_now();
         rock_is_pushed = false;
       }
 
       // Move viewport
       {
-        int rel_player_x = player_pos.x - viewport_x;
+        int rel_player_x = level.player_pos.x - viewport_x;
         if (rel_player_x >= 20) {
           viewport_x += rel_player_x - 20;
           if (viewport_x > viewport_x_max) {
@@ -548,7 +554,7 @@ int main() {
             viewport_x = 0;
           }
         }
-        int rel_player_y = player_pos.y - viewport_y;
+        int rel_player_y = level.player_pos.y - viewport_y;
         if (rel_player_y >= 13) {
           viewport_y += rel_player_y - 13;
           if (viewport_y > viewport_y_max) {
@@ -567,17 +573,17 @@ int main() {
     // Drop rocks
     if (seconds_since(drop_last_time) > kDropDelay) {
       drop_last_time = time_now();
-      drop_objects(level, &rocks, 'r', locks);
-      drop_objects(level, &diamonds, 'd', locks);
+      drop_objects(&level, 'r');
+      drop_objects(&level, 'd');
 
       // Clear locks
-      for (int i = 0; i < NUM_LOCKS; i++) {
-        Lock *lock = &locks[i];
+      for (int i = 0; i < COUNT(level.locks); i++) {
+        Lock *lock = &level.locks[i];
         if (lock->lifetime > 0) {
           lock->lifetime--;
           if (lock->lifetime == 0) {
-            if (level[lock->pos.y][lock->pos.x] == 'l') {
-              level[lock->pos.y][lock->pos.x] = '_';
+            if (level.tiles[lock->pos.y][lock->pos.x] == 'l') {
+              level.tiles[lock->pos.y][lock->pos.x] = '_';
             }
           }
         }
@@ -604,17 +610,17 @@ int main() {
     v2 white_diamond = {256, 32};
     draw_tile(draw_context, white_diamond, V2(2, 0));
 
-    if (status.diamonds_collected < status.min_diamonds) {
-      draw_number(draw_context, status.min_diamonds, V2(0, 0), COLOR_YELLOW, 2);
+    if (level.diamonds_collected < level.min_diamonds) {
+      draw_number(draw_context, level.min_diamonds, V2(0, 0), COLOR_YELLOW, 2);
     } else {
       draw_tile(draw_context, white_diamond, V2(0, 0));
       draw_tile(draw_context, white_diamond, V2(1, 0));
     }
-    draw_number(draw_context, status.score_per_diamond, V2(3, 0), COLOR_WHITE, 2);
+    draw_number(draw_context, level.score_per_diamond, V2(3, 0), COLOR_WHITE, 2);
 
     // Display number of collected diamonds
     v2 pos_diamonds = {10, 0};
-    draw_number(draw_context, status.diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
+    draw_number(draw_context, level.diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
 
     // Display overall score
     v2 pos_score = {viewport_width - 6, 0};
@@ -622,7 +628,7 @@ int main() {
 
     // Display time
     v2 pos_time = {viewport_width / 2, 0};
-    int time_to_show = status.time_left - (int)(seconds_since(start));
+    int time_to_show = level.time_left - (int)(seconds_since(start));
     if (time_to_show < 0) {
       time_to_show = 0;
     }
@@ -633,7 +639,7 @@ int main() {
       for (int x = 0; x < viewport_width; x++) {
         v2 src = {0, 192};
         v2 dst = {x, y};
-        char tile_type = level[viewport_y + y][viewport_x + x];
+        char tile_type = level.tiles[viewport_y + y][viewport_x + x];
         if (tile_type == 'r') {
           src.x = 0;
           src.y = 224;
