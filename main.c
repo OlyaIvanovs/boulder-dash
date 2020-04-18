@@ -358,6 +358,13 @@ int main() {
   anim_diamond.start_frame.x = 0;
   anim_diamond.start_frame.y = 320;
 
+  Animation anim_enemy = {};
+  anim_enemy.start_time = start;
+  anim_enemy.num_frames = 8;
+  anim_enemy.fps = 15;
+  anim_enemy.start_frame.x = 0;
+  anim_enemy.start_frame.y = 288;
+
   Animation anim_idle1 = {};
   anim_idle1.start_time = start;
   anim_idle1.num_frames = 8;
@@ -402,7 +409,7 @@ int main() {
 
   // Init level
   Level level = {};
-  int level_id = 0;
+  int level_id = 1;
   load_level(&level, level_id);
 
   u64 player_last_move_time = start;
@@ -674,6 +681,10 @@ int main() {
           src.y = frame.y;
         } else if (tile_type == 'd') {
           v2 frame = get_frame(&anim_diamond);
+          src.x = frame.x;
+          src.y = frame.y;
+        } else if (tile_type == 'f') {
+          v2 frame = get_frame(&anim_enemy);
           src.x = frame.x;
           src.y = frame.y;
         } else if (tile_type == 'X') {
