@@ -113,6 +113,7 @@ void load_level(Level *level, int num_level) {
   level->time_left = 150;
   level->score_per_diamond = 10;
   level->min_diamonds = level->diamonds.num / 6;
+  level->diamonds_collected = 0;
   level->can_exit = false;
 }
 
@@ -394,7 +395,7 @@ int main() {
 
   Animation anim_exit = {};
   anim_exit.start_time = start;
-  anim_exit.num_frames = 1;  // no exit annimation until all diamonds are collected
+  anim_exit.num_frames = 2;  // no exit annimation until all diamonds are collected
   anim_exit.fps = 4;
   anim_exit.start_frame.x = 32;
   anim_exit.start_frame.y = 192;
@@ -478,17 +479,14 @@ int main() {
       } else if (input.down) {
         next_player_pos.y += 1;
       }
-
+      char next_tile = level.tiles[next_player_pos.y][next_player_pos.x];
       if (can_move(&level, next_player_pos)) {
-        char next_tile = level.tiles[next_player_pos.y][next_player_pos.x];
         if (next_tile == 'd') {
           collect_diamond(&level.diamonds, next_player_pos);
           level.diamonds_collected += 1;
           score += level.score_per_diamond;
           if (level.diamonds_collected == level.min_diamonds) {
             level.score_per_diamond = 20;
-            anim_exit.num_frames = 2;
-            anim_exit.start_frame.x = 32;
             white_tunnel = true;
             level.can_exit = true;
             play_sound(SOUND_CRACK);
@@ -519,7 +517,7 @@ int main() {
       }
 
       // Move rock
-      if (can_move_rock(&level, level.player_pos, next_player_pos)) {
+      if (next_tile == 'r' && can_move_rock(&level, level.player_pos, next_player_pos)) {
         if (!rock_is_pushed) {
           rock_start_move_time = time_now();
           rock_is_pushed = true;
@@ -679,9 +677,14 @@ int main() {
           src.x = frame.x;
           src.y = frame.y;
         } else if (tile_type == 'X') {
-          v2 frame = get_frame(&anim_exit);
-          src.x = frame.x;
-          src.y = frame.y;
+          if (level.can_exit) {
+            v2 frame = get_frame(&anim_exit);
+            src.x = frame.x;
+            src.y = frame.y;
+          } else {
+            src.x = 32;
+            src.y = 192;
+          }
         }
         draw_tile(draw_context, src, dst);
       }
