@@ -43,6 +43,10 @@ static inline v2 V2(int x, int y) {
   return result;
 }
 
+static inline v2 sum_v2(v2 a, v2 b) {
+  return V2(a.x + b.x, a.y + b.y);
+}
+
 typedef struct {
   v2 objects[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
   int num;
@@ -132,6 +136,14 @@ v2 get_frame(Animation *animation) {
   return result;
 }
 
+v2 turn_right(v2 direction) {
+  return V2(-direction.y, direction.x);
+}
+
+v2 turn_left(v2 direction) {
+  return V2(direction.y, -direction.x);
+}
+
 bool can_move(Level *level, v2 pos) {
   if (pos.x < 0 || pos.x >= LEVEL_WIDTH || pos.y < 0 || pos.y >= LEVEL_HEIGHT) {
     return false;
@@ -144,7 +156,7 @@ bool can_move(Level *level, v2 pos) {
   return false;
 }
 
-bool can_move_enemy(Level *level, v2 pos) {
+bool enemy_can_move(Level *level, v2 pos) {
   if (pos.x < 0 || pos.x >= LEVEL_WIDTH || pos.y < 0 || pos.y >= LEVEL_HEIGHT) {
     return false;
   }
@@ -434,10 +446,10 @@ int main() {
   u64 enemy_move_last_time = start;
   const double kPlayerDelay = 0.1;
   const double kDropDelay = 0.15;
-  const double kEnemyMoveDelay = 0.25;
+  const double kEnemyMoveDelay = 0.15;
   Input input = {false, false, false, false};
 
-  int enemy_direction = 0;  // to right
+  v2 enemy_direction = {1, 0};  // to right
 
   Animation *player_animation = &anim_idle1;
 
@@ -547,65 +559,25 @@ int main() {
       // Move enemy
       if (seconds_since(enemy_move_last_time) > kEnemyMoveDelay) {
         enemy_move_last_time = time_now();
-        v2 next_enemy_pos = level.enemy_pos;
+        level.tiles[level.enemy_pos.y][level.enemy_pos.x] = '_';  // "erase"
 
-        v2 enemy_pos_right = level.enemy_pos;
-        v2 enemy_pos_forward = level.enemy_pos;
+        v2 pos_forward = sum_v2(level.enemy_pos, enemy_direction);
+        v2 pos_right = sum_v2(level.enemy_pos, turn_right(enemy_direction));
 
-        if (enemy_direction == 0) {
-          enemy_pos_right.y += 1;
-          enemy_pos_forward.x += 1;
-        } else if (enemy_direction == 1) {
-          enemy_pos_right.x += 1;
-          enemy_pos_forward.y -= 1;
-        } else if (enemy_direction == 2) {
-          enemy_pos_right.y -= 1;
-          enemy_pos_forward.x -= 1;
-        } else {
-          enemy_pos_right.x -= 1;
-          enemy_pos_forward.y += 1;
-        }
-
-        if (can_move_enemy(&level, enemy_pos_right)) {
-          next_enemy_pos = enemy_pos_right;
-          enemy_direction = (enemy_direction + 3) % 4;
-        } else if (can_move_enemy(&level, enemy_pos_forward)) {
-          next_enemy_pos = enemy_pos_forward;
-        } else {
-          enemy_direction = (enemy_direction + 1) % 4;
-        }
-
-        level.tiles[level.enemy_pos.y][level.enemy_pos.x] = '_';
-        level.tiles[next_enemy_pos.y][next_enemy_pos.x] = 'f';
-
-        level.enemy_pos = next_enemy_pos;
-      }
-
-      // Move enemy
-      if (seconds_since(enemy_move_last_time) > kEnemyMoveDelay) {
-        enemy_move_last_time = time_now();
-
-        v2 forward = sum_v2(enemy_pos, enemy_direction);
-        v2 right = sum_v2(enemy_pos, turn_right(enemy_direction));
-
-        v2 next_enemy_pos;
-        if (enemy_can_move(&level, right)) {
+        if (enemy_can_move(&level, pos_right)) {
           // Turn and move right
-          next_enemy_pos = right;
+          level.enemy_pos = pos_right;
           enemy_direction = turn_right(enemy_direction);
-        } else if (enemy_can_move(&level, forward)) {
+        } else if (enemy_can_move(&level, pos_forward)) {
           // Move forward
-          next_enemy_pos = forward;
+          level.enemy_pos = pos_forward;
         } else {
           // Turn left in place
           enemy_direction = turn_left(enemy_direction);
-          next_enemy_pos = level.enemy_pos;
+          level.enemy_pos = level.enemy_pos;
         }
 
-        level.tiles[level.enemy_pos.y][level.enemy_pos.x] = '_';
-        level.tiles[next_enemy_pos.y][next_enemy_pos.x] = 'f';
-
-        level.enemy_pos = next_enemy_pos;
+        level.tiles[level.enemy_pos.y][level.enemy_pos.x] = 'f';  // "draw"
       }
 
       // Push rock
