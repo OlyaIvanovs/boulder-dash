@@ -73,6 +73,7 @@ typedef struct Level {
   Objects rocks;
   Lock locks[10];
   v2 player_pos;
+  v2 enemy_pos;
   int time_left;
   int score_per_diamond;
   int min_diamonds;
@@ -92,6 +93,11 @@ void load_level(Level *level, int num_level) {
       if (level->tiles[y][x] == 'E') {
         level->player_pos.x = x;
         level->player_pos.y = y;
+      }
+
+      if (level->tiles[y][x] == 'f') {
+        level->enemy_pos.x = x;
+        level->enemy_pos.y = y;
       }
 
       if (level->tiles[y][x] == 'r') {
@@ -133,6 +139,17 @@ bool can_move(Level *level, v2 pos) {
   char tile_type = level->tiles[pos.y][pos.x];
   if (tile_type == ' ' || tile_type == '.' || tile_type == '_' || tile_type == 'd' ||
       (tile_type == 'X' && level->can_exit)) {
+    return true;
+  }
+  return false;
+}
+
+bool can_move_enemy(Level *level, v2 pos) {
+  if (pos.x < 0 || pos.x >= LEVEL_WIDTH || pos.y < 0 || pos.y >= LEVEL_HEIGHT) {
+    return false;
+  }
+  char tile_type = level->tiles[pos.y][pos.x];
+  if (tile_type == '_' || tile_type == ' ') {
     return true;
   }
   return false;
@@ -414,9 +431,13 @@ int main() {
 
   u64 player_last_move_time = start;
   u64 drop_last_time = start;
+  u64 enemy_move_last_time = start;
   const double kPlayerDelay = 0.1;
   const double kDropDelay = 0.15;
+  const double kEnemyMoveDelay = 0.25;
   Input input = {false, false, false, false};
+
+  int enemy_direction = 0;  // to right
 
   Animation *player_animation = &anim_idle1;
 
@@ -523,7 +544,71 @@ int main() {
         player_last_move_time = time_now();
       }
 
-      // Move rock
+      // Move enemy
+      if (seconds_since(enemy_move_last_time) > kEnemyMoveDelay) {
+        enemy_move_last_time = time_now();
+        v2 next_enemy_pos = level.enemy_pos;
+
+        v2 enemy_pos_right = level.enemy_pos;
+        v2 enemy_pos_forward = level.enemy_pos;
+
+        if (enemy_direction == 0) {
+          enemy_pos_right.y += 1;
+          enemy_pos_forward.x += 1;
+        } else if (enemy_direction == 1) {
+          enemy_pos_right.x += 1;
+          enemy_pos_forward.y -= 1;
+        } else if (enemy_direction == 2) {
+          enemy_pos_right.y -= 1;
+          enemy_pos_forward.x -= 1;
+        } else {
+          enemy_pos_right.x -= 1;
+          enemy_pos_forward.y += 1;
+        }
+
+        if (can_move_enemy(&level, enemy_pos_right)) {
+          next_enemy_pos = enemy_pos_right;
+          enemy_direction = (enemy_direction + 3) % 4;
+        } else if (can_move_enemy(&level, enemy_pos_forward)) {
+          next_enemy_pos = enemy_pos_forward;
+        } else {
+          enemy_direction = (enemy_direction + 1) % 4;
+        }
+
+        level.tiles[level.enemy_pos.y][level.enemy_pos.x] = '_';
+        level.tiles[next_enemy_pos.y][next_enemy_pos.x] = 'f';
+
+        level.enemy_pos = next_enemy_pos;
+      }
+
+      // Move enemy
+      if (seconds_since(enemy_move_last_time) > kEnemyMoveDelay) {
+        enemy_move_last_time = time_now();
+
+        v2 forward = sum_v2(enemy_pos, enemy_direction);
+        v2 right = sum_v2(enemy_pos, turn_right(enemy_direction));
+
+        v2 next_enemy_pos;
+        if (enemy_can_move(&level, right)) {
+          // Turn and move right
+          next_enemy_pos = right;
+          enemy_direction = turn_right(enemy_direction);
+        } else if (enemy_can_move(&level, forward)) {
+          // Move forward
+          next_enemy_pos = forward;
+        } else {
+          // Turn left in place
+          enemy_direction = turn_left(enemy_direction);
+          next_enemy_pos = level.enemy_pos;
+        }
+
+        level.tiles[level.enemy_pos.y][level.enemy_pos.x] = '_';
+        level.tiles[next_enemy_pos.y][next_enemy_pos.x] = 'f';
+
+        level.enemy_pos = next_enemy_pos;
+      }
+
+      // Push rock
       if (next_tile == 'r' && can_move_rock(&level, level.player_pos, next_player_pos)) {
         if (!rock_is_pushed) {
           rock_start_move_time = time_now();
