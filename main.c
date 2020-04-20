@@ -47,7 +47,7 @@ static inline v2 sum_v2(v2 a, v2 b) {
   return V2(a.x + b.x, a.y + b.y);
 }
 
-typedef struct {
+typedef struct Objects {
   v2 objects[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
   int num;
 } Objects;
@@ -56,6 +56,16 @@ typedef struct {
   v2 pos;
   int lifetime;
 } Lock;
+
+typedef struct Enemy {
+  v2 pos;
+  v2 direction;
+} Enemy;
+
+typedef struct Enemies {
+  Enemy enemies[20];
+  int num;
+} Enemies;
 
 typedef struct {
   v2 start_frame;
@@ -75,6 +85,7 @@ typedef struct Level {
   Tiles tiles;
   Objects diamonds;
   Objects rocks;
+  Enemies enemies;
   Lock locks[10];
   v2 player_pos;
   v2 enemy_pos;
@@ -90,6 +101,7 @@ void load_level(Level *level, int num_level) {
 
   SDL_memset(&level->rocks, 0, sizeof(level->rocks));
   SDL_memset(&level->diamonds, 0, sizeof(level->diamonds));
+  SDL_memset(&level->enemies, 0, sizeof(level->enemies));
   SDL_memset(level->locks, 0, sizeof(level->locks));
 
   for (int y = 0; y < LEVEL_HEIGHT; ++y) {
@@ -100,8 +112,11 @@ void load_level(Level *level, int num_level) {
       }
 
       if (level->tiles[y][x] == 'f') {
-        level->enemy_pos.x = x;
-        level->enemy_pos.y = y;
+        level->enemies.enemies[level->enemies.num].pos.x = x;
+        level->enemies.enemies[level->enemies.num].pos.y = y;
+        level->enemies.enemies[level->enemies.num].direction = V2(1, 0);  // to the right
+        level->enemies.num++;
+        assert(level->enemies.num < COUNT(level->enemies.enemies));
       }
 
       if (level->tiles[y][x] == 'r') {
@@ -438,7 +453,7 @@ int main() {
 
   // Init level
   Level level = {};
-  int level_id = 1;
+  int level_id = 3;
   load_level(&level, level_id);
 
   u64 player_last_move_time = start;
@@ -448,8 +463,6 @@ int main() {
   const double kDropDelay = 0.15;
   const double kEnemyMoveDelay = 0.15;
   Input input = {false, false, false, false};
-
-  v2 enemy_direction = {1, 0};  // to right
 
   Animation *player_animation = &anim_idle1;
 
@@ -559,25 +572,31 @@ int main() {
       // Move enemy
       if (seconds_since(enemy_move_last_time) > kEnemyMoveDelay) {
         enemy_move_last_time = time_now();
-        level.tiles[level.enemy_pos.y][level.enemy_pos.x] = '_';  // "erase"
 
-        v2 pos_forward = sum_v2(level.enemy_pos, enemy_direction);
-        v2 pos_right = sum_v2(level.enemy_pos, turn_right(enemy_direction));
+        for (int i = 0; i < level.enemies.num; ++i) {
+          Enemy *enemy = &level.enemies.enemies[i];
 
-        if (enemy_can_move(&level, pos_right)) {
-          // Turn and move right
-          level.enemy_pos = pos_right;
-          enemy_direction = turn_right(enemy_direction);
-        } else if (enemy_can_move(&level, pos_forward)) {
-          // Move forward
-          level.enemy_pos = pos_forward;
-        } else {
-          // Turn left in place
-          enemy_direction = turn_left(enemy_direction);
-          level.enemy_pos = level.enemy_pos;
+          assert(level.tiles[enemy->pos.y][enemy->pos.x] == 'f');
+          level.tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
+
+          v2 pos_forward = sum_v2(enemy->pos, enemy->direction);
+          v2 pos_right = sum_v2(enemy->pos, turn_right(enemy->direction));
+
+          if (enemy_can_move(&level, pos_right)) {
+            // Turn and move right
+            enemy->pos = pos_right;
+            enemy->direction = turn_right(enemy->direction);
+          } else if (enemy_can_move(&level, pos_forward)) {
+            // Move forward
+            enemy->pos = pos_forward;
+          } else {
+            // Turn left in place
+            enemy->direction = turn_left(enemy->direction);
+            enemy->pos = enemy->pos;
+          }
+
+          level.tiles[enemy->pos.y][enemy->pos.x] = 'f';  // "draw"
         }
-
-        level.tiles[level.enemy_pos.y][level.enemy_pos.x] = 'f';  // "draw"
       }
 
       // Push rock
