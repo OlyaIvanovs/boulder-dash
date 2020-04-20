@@ -86,6 +86,7 @@ typedef struct Level {
   Objects diamonds;
   Objects rocks;
   Enemies enemies;
+  Enemies butterflies;
   Lock locks[10];
   v2 player_pos;
   v2 enemy_pos;
@@ -102,6 +103,7 @@ void load_level(Level *level, int num_level) {
   SDL_memset(&level->rocks, 0, sizeof(level->rocks));
   SDL_memset(&level->diamonds, 0, sizeof(level->diamonds));
   SDL_memset(&level->enemies, 0, sizeof(level->enemies));
+  SDL_memset(&level->butterflies, 0, sizeof(level->butterflies));
   SDL_memset(level->locks, 0, sizeof(level->locks));
 
   for (int y = 0; y < LEVEL_HEIGHT; ++y) {
@@ -117,6 +119,14 @@ void load_level(Level *level, int num_level) {
         level->enemies.enemies[level->enemies.num].direction = V2(1, 0);  // to the right
         level->enemies.num++;
         assert(level->enemies.num < COUNT(level->enemies.enemies));
+      }
+
+      if (level->tiles[y][x] == 'b') {
+        level->butterflies.enemies[level->butterflies.num].pos.x = x;
+        level->butterflies.enemies[level->butterflies.num].pos.y = y;
+        level->butterflies.enemies[level->butterflies.num].direction = V2(1, 0);  // to the right
+        level->butterflies.num++;
+        assert(level->butterflies.num < COUNT(level->butterflies.enemies));
       }
 
       if (level->tiles[y][x] == 'r') {
@@ -180,6 +190,43 @@ bool enemy_can_move(Level *level, v2 pos) {
     return true;
   }
   return false;
+}
+
+void move_enemies(Level *level, char obj_sym) {
+  Enemies *enemies;
+
+  if (obj_sym == 'f') {
+    enemies = &level->enemies;
+  } else if (obj_sym == 'b') {
+    enemies = &level->butterflies;
+  } else {
+    assert(!"Unknown obj sym");
+  }
+
+  for (int i = 0; i < enemies->num; ++i) {
+    Enemy *enemy = &enemies->enemies[i];
+
+    assert(level->tiles[enemy->pos.y][enemy->pos.x] == obj_sym);
+    level->tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
+
+    v2 pos_forward = sum_v2(enemy->pos, enemy->direction);
+    v2 pos_right = sum_v2(enemy->pos, turn_right(enemy->direction));
+
+    if (enemy_can_move(level, pos_right)) {
+      // Turn and move right
+      enemy->pos = pos_right;
+      enemy->direction = turn_right(enemy->direction);
+    } else if (enemy_can_move(level, pos_forward)) {
+      // Move forward
+      enemy->pos = pos_forward;
+    } else {
+      // Turn left in place
+      enemy->direction = turn_left(enemy->direction);
+      enemy->pos = enemy->pos;
+    }
+
+    level->tiles[enemy->pos.y][enemy->pos.x] = obj_sym;  // "draw"
+  }
 }
 
 bool can_move_rock(Level *level, v2 pos, v2 next_pos) {
@@ -409,6 +456,13 @@ int main() {
   anim_enemy.start_frame.x = 0;
   anim_enemy.start_frame.y = 288;
 
+  Animation anim_butterfly = {};
+  anim_butterfly.start_time = start;
+  anim_butterfly.num_frames = 8;
+  anim_butterfly.fps = 15;
+  anim_butterfly.start_frame.x = 0;
+  anim_butterfly.start_frame.y = 352;
+
   Animation anim_idle1 = {};
   anim_idle1.start_time = start;
   anim_idle1.num_frames = 8;
@@ -573,30 +627,8 @@ int main() {
       if (seconds_since(enemy_move_last_time) > kEnemyMoveDelay) {
         enemy_move_last_time = time_now();
 
-        for (int i = 0; i < level.enemies.num; ++i) {
-          Enemy *enemy = &level.enemies.enemies[i];
-
-          assert(level.tiles[enemy->pos.y][enemy->pos.x] == 'f');
-          level.tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
-
-          v2 pos_forward = sum_v2(enemy->pos, enemy->direction);
-          v2 pos_right = sum_v2(enemy->pos, turn_right(enemy->direction));
-
-          if (enemy_can_move(&level, pos_right)) {
-            // Turn and move right
-            enemy->pos = pos_right;
-            enemy->direction = turn_right(enemy->direction);
-          } else if (enemy_can_move(&level, pos_forward)) {
-            // Move forward
-            enemy->pos = pos_forward;
-          } else {
-            // Turn left in place
-            enemy->direction = turn_left(enemy->direction);
-            enemy->pos = enemy->pos;
-          }
-
-          level.tiles[enemy->pos.y][enemy->pos.x] = 'f';  // "draw"
-        }
+        move_enemies(&level, 'f');
+        move_enemies(&level, 'b');
       }
 
       // Push rock
@@ -761,6 +793,10 @@ int main() {
           src.y = frame.y;
         } else if (tile_type == 'f') {
           v2 frame = get_frame(&anim_enemy);
+          src.x = frame.x;
+          src.y = frame.y;
+        } else if (tile_type == 'b') {
+          v2 frame = get_frame(&anim_butterfly);
           src.x = frame.x;
           src.y = frame.y;
         } else if (tile_type == 'X') {
