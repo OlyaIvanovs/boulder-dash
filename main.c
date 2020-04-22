@@ -63,7 +63,7 @@ typedef struct Enemy {
 } Enemy;
 
 typedef struct Enemies {
-  Enemy enemies[20];
+  Enemy objects[20];
   int num;
 } Enemies;
 
@@ -114,19 +114,19 @@ void load_level(Level *level, int num_level) {
       }
 
       if (level->tiles[y][x] == 'f') {
-        level->enemies.enemies[level->enemies.num].pos.x = x;
-        level->enemies.enemies[level->enemies.num].pos.y = y;
-        level->enemies.enemies[level->enemies.num].direction = V2(1, 0);  // to the right
+        level->enemies.objects[level->enemies.num].pos.x = x;
+        level->enemies.objects[level->enemies.num].pos.y = y;
+        level->enemies.objects[level->enemies.num].direction = V2(1, 0);  // to the right
         level->enemies.num++;
-        assert(level->enemies.num < COUNT(level->enemies.enemies));
+        assert(level->enemies.num < COUNT(level->enemies.objects));
       }
 
       if (level->tiles[y][x] == 'b') {
-        level->butterflies.enemies[level->butterflies.num].pos.x = x;
-        level->butterflies.enemies[level->butterflies.num].pos.y = y;
-        level->butterflies.enemies[level->butterflies.num].direction = V2(1, 0);  // to the right
+        level->butterflies.objects[level->butterflies.num].pos.x = x;
+        level->butterflies.objects[level->butterflies.num].pos.y = y;
+        level->butterflies.objects[level->butterflies.num].direction = V2(1, 0);  // to the right
         level->butterflies.num++;
-        assert(level->butterflies.num < COUNT(level->butterflies.enemies));
+        assert(level->butterflies.num < COUNT(level->butterflies.objects));
       }
 
       if (level->tiles[y][x] == 'r') {
@@ -204,15 +204,17 @@ void move_enemies(Level *level, char obj_sym) {
   }
 
   for (int i = 0; i < enemies->num; ++i) {
-    Enemy *enemy = &enemies->enemies[i];
+    Enemy *enemy = &enemies->objects[i];
 
     assert(level->tiles[enemy->pos.y][enemy->pos.x] == obj_sym);
     level->tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
 
     v2 pos_forward = sum_v2(enemy->pos, enemy->direction);
     v2 pos_right = sum_v2(enemy->pos, turn_right(enemy->direction));
+    v2 pos_right_diag = sum_v2(pos_right, V2(-enemy->direction.x, -enemy->direction.y));
 
-    if (enemy_can_move(level, pos_right)) {
+    if (enemy_can_move(level, pos_right) &&
+        level->tiles[pos_right_diag.y][pos_right_diag.x] != '_') {
       // Turn and move right
       enemy->pos = pos_right;
       enemy->direction = turn_right(enemy->direction);
@@ -226,6 +228,17 @@ void move_enemies(Level *level, char obj_sym) {
     }
 
     level->tiles[enemy->pos.y][enemy->pos.x] = obj_sym;  // "draw"
+  }
+}
+
+void remove_enemy(Enemies *enemies, v2 pos) {
+  for (int i = 0; i < enemies->num; i++) {
+    if (enemies->objects[i].pos.x == pos.x && enemies->objects[i].pos.y == pos.y) {
+      v2 *pos = &enemies->objects[i].pos;
+      v2 *pos_lst = &enemies->objects[enemies->num - 1].pos;
+      *pos = *pos_lst;
+      enemies->num -= 1;
+    }
   }
 }
 
@@ -247,6 +260,39 @@ void add_lock(Lock *locks, int x, int y) {
     }
   }
   assert(!"Not enough space for locks");
+}
+
+void remove_obj(Objects *objs, v2 pos) {
+  for (int i = 0; i < objs->num; i++) {
+    if (objs->objects[i].x == pos.x && objs->objects[i].y == pos.y) {
+      v2 *pos = &objs->objects[i];
+      v2 *pos_lst = &objs->objects[objs->num - 1];
+      *pos = *pos_lst;
+      objs->num -= 1;
+    }
+  }
+}
+
+void delete_rock(Objects *rocks, v2 pos) {
+  for (int i = 0; i < rocks->num; i++) {
+    if (rocks->objects[i].x == pos.x && rocks->objects[i].y == pos.y) {
+      v2 *pos = &rocks->objects[i];
+      v2 *pos_lst = &rocks->objects[rocks->num - 1];
+      *pos = *pos_lst;
+      rocks->num -= 1;
+    }
+  }
+}
+
+void collect_diamond(Objects *diamonds, v2 pos) {
+  for (int i = 0; i < diamonds->num; i++) {
+    if (diamonds->objects[i].x == pos.x && diamonds->objects[i].y == pos.y) {
+      v2 *pos = &diamonds->objects[i];
+      v2 *pos_lst = &diamonds->objects[diamonds->num - 1];
+      *pos = *pos_lst;
+      diamonds->num -= 1;
+    }
+  }
 }
 
 void drop_objects(Level *level, char obj_sym) {
@@ -294,6 +340,25 @@ void drop_objects(Level *level, char obj_sym) {
       continue;  // don't check if we can slide
     }
 
+    if (tile_under == 'f') {
+      play_fall_sound = true;
+      for (int dif_y = 0; dif_y <= 2; dif_y++) {
+        for (int dif_x = 0; dif_x <= 2; dif_x++) {
+          char tile = level->tiles[y + dif_y][x - 1 + dif_x];
+          if (tile == 'r') {
+            remove_obj(&level->rocks, V2(x - 1 + dif_x, y + dif_y));
+          } else if (tile == 'd') {
+            remove_obj(&level->diamonds, V2(x - 1 + dif_x, y + dif_y));
+          } else if (tile == 'f') {
+            remove_enemy(&level->enemies, V2(x - 1 + dif_x, y + dif_y));
+          }
+          if (tile != 'W') {
+            level->tiles[y + dif_y][x - 1 + dif_x] = 'F';
+          }
+        }
+      }
+    }
+
     // Slide off rocks and diamonds
     if ((tile_under == 'r' || tile_under == 'd' || tile_under == 'w') &&
         (tile_above != 'd' && tile_above != 'r' && tile_above != 'l')) {
@@ -323,17 +388,8 @@ void drop_objects(Level *level, char obj_sym) {
       static int diamond_sound_num = 0;
       play_sound(SOUND_DIAMOND_1 + diamond_sound_num);
       diamond_sound_num = (diamond_sound_num + 1) % 7;
-    }
-  }
-}
-
-void collect_diamond(Objects *diamonds, v2 pos) {
-  for (int i = 0; i < diamonds->num; i++) {
-    if (diamonds->objects[i].x == pos.x && diamonds->objects[i].y == pos.y) {
-      v2 *pos = &diamonds->objects[i];
-      v2 *pos_lst = &diamonds->objects[diamonds->num - 1];
-      *pos = *pos_lst;
-      diamonds->num -= 1;
+    } else if (obj_sym == 'f') {
+      play_sound(SOUND_EXPLODED);
     }
   }
 }
@@ -456,6 +512,13 @@ int main() {
   anim_enemy.start_frame.x = 0;
   anim_enemy.start_frame.y = 288;
 
+  Animation anim_enemy_exploded = {};
+  anim_enemy_exploded.start_time = start;
+  anim_enemy_exploded.num_frames = 4;
+  anim_enemy_exploded.fps = 15;
+  anim_enemy_exploded.start_frame.x = 32;
+  anim_enemy_exploded.start_frame.y = 0;
+
   Animation anim_butterfly = {};
   anim_butterfly.start_time = start;
   anim_butterfly.num_frames = 8;
@@ -507,7 +570,7 @@ int main() {
 
   // Init level
   Level level = {};
-  int level_id = 3;
+  int level_id = 1;
   load_level(&level, level_id);
 
   u64 player_last_move_time = start;
@@ -589,7 +652,7 @@ int main() {
       char next_tile = level.tiles[next_player_pos.y][next_player_pos.x];
       if (can_move(&level, next_player_pos)) {
         if (next_tile == 'd') {
-          collect_diamond(&level.diamonds, next_player_pos);
+          remove_obj(&level.diamonds, next_player_pos);
           level.diamonds_collected += 1;
           score += level.score_per_diamond;
           if (level.diamonds_collected == level.min_diamonds) {
@@ -793,6 +856,10 @@ int main() {
           src.y = frame.y;
         } else if (tile_type == 'f') {
           v2 frame = get_frame(&anim_enemy);
+          src.x = frame.x;
+          src.y = frame.y;
+        } else if (tile_type == 'F') {
+          v2 frame = get_frame(&anim_enemy_exploded);
           src.x = frame.x;
           src.y = frame.y;
         } else if (tile_type == 'b') {
