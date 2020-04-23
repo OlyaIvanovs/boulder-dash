@@ -72,6 +72,7 @@ typedef struct {
   u64 start_time;
   int num_frames;
   int fps;
+  int times_to_play;  // how many times to play animation in total; 0 if indefinitely
 } Animation;
 
 typedef struct {
@@ -153,12 +154,13 @@ void load_level(Level *level, int num_level) {
 }
 
 v2 get_frame(Animation *animation) {
-  v2 result;
-  int frame_index =
-      (int)(seconds_since(animation->start_time) * animation->fps) % animation->num_frames;
-  result.x = animation->start_frame.x + frame_index * 32;
-  result.y = animation->start_frame.y;
-  return result;
+  int frames_played_since_start = (int)(seconds_since(animation->start_time) * animation->fps);
+  int frame_index = frames_played_since_start % animation->num_frames;
+  if (animation->times_to_play > 0 &&
+      frames_played_since_start / animation->num_frames > animation->times_to_play) {
+    frame_index = animation->num_frames - 1;
+  }
+  return V2(animation->start_frame.x + frame_index * 32, animation->start_frame.y);
 }
 
 v2 turn_right(v2 direction) {
@@ -340,21 +342,43 @@ void drop_objects(Level *level, char obj_sym) {
       continue;  // don't check if we can slide
     }
 
+    // Kill enemy
     if (tile_under == 'f') {
       play_fall_sound = true;
-      for (int dif_y = 0; dif_y <= 2; dif_y++) {
-        for (int dif_x = 0; dif_x <= 2; dif_x++) {
-          char tile = level->tiles[y + dif_y][x - 1 + dif_x];
+
+      v2 explosion_start = {x - 1, y};
+      v2 explosion_end = {x + 1, y + 2};
+
+      // Don't blow up the outer walls
+      if (explosion_start.x == 0) {
+        explosion_start.x++;
+        explosion_end.x++;
+      }
+      if (explosion_end.x == LEVEL_WIDTH - 1) {
+        explosion_start.x--;
+        explosion_end.x--;
+      }
+      if (explosion_start.y == 1) {
+        explosion_start.y++;
+        explosion_end.y++;
+      }
+      if (explosion_end.y == LEVEL_HEIGHT - 1) {
+        explosion_start.y--;
+        explosion_end.y--;
+      }
+
+      for (int Y = explosion_start.y; Y <= explosion_end.y; ++Y) {
+        for (int X = explosion_start.x; X <= explosion_end.x; ++X) {
+          char tile = level->tiles[Y][X];
+          assert(tile != 'W');
           if (tile == 'r') {
-            remove_obj(&level->rocks, V2(x - 1 + dif_x, y + dif_y));
+            remove_obj(&level->rocks, V2(X, Y));
           } else if (tile == 'd') {
-            remove_obj(&level->diamonds, V2(x - 1 + dif_x, y + dif_y));
+            remove_obj(&level->diamonds, V2(X, Y));
           } else if (tile == 'f') {
-            remove_enemy(&level->enemies, V2(x - 1 + dif_x, y + dif_y));
+            remove_enemy(&level->enemies, V2(X, Y));
           }
-          if (tile != 'W') {
-            level->tiles[y + dif_y][x - 1 + dif_x] = 'F';
-          }
+          level->tiles[Y][X] = 'F';
         }
       }
     }
@@ -518,6 +542,7 @@ int main() {
   anim_enemy_exploded.fps = 15;
   anim_enemy_exploded.start_frame.x = 32;
   anim_enemy_exploded.start_frame.y = 0;
+  anim_enemy_exploded.times_to_play = 3;
 
   Animation anim_butterfly = {};
   anim_butterfly.start_time = start;
