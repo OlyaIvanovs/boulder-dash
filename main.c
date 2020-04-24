@@ -75,6 +75,15 @@ typedef struct {
   int times_to_play;  // how many times to play animation in total; 0 if indefinitely
 } Animation;
 
+typedef struct Explosion {
+  bool active;
+  char type;
+  v2 pos_start;
+  v2 pos_end;
+  u64 start_time;
+  double duration;  // in seconds
+} Explosion;
+
 typedef struct {
   SDL_Renderer *renderer;
   SDL_Texture *texture;
@@ -89,6 +98,7 @@ typedef struct Level {
   Enemies enemies;
   Enemies butterflies;
   Lock locks[10];
+  Explosion explosions[5];
   v2 player_pos;
   v2 enemy_pos;
   int time_left;
@@ -99,13 +109,8 @@ typedef struct Level {
 } Level;
 
 void load_level(Level *level, int num_level) {
+  SDL_memset(level, 0, sizeof(*level));
   SDL_memcpy(level->tiles, gLevels[num_level], LEVEL_HEIGHT * LEVEL_WIDTH);
-
-  SDL_memset(&level->rocks, 0, sizeof(level->rocks));
-  SDL_memset(&level->diamonds, 0, sizeof(level->diamonds));
-  SDL_memset(&level->enemies, 0, sizeof(level->enemies));
-  SDL_memset(&level->butterflies, 0, sizeof(level->butterflies));
-  SDL_memset(level->locks, 0, sizeof(level->locks));
 
   for (int y = 0; y < LEVEL_HEIGHT; ++y) {
     for (int x = 0; x < LEVEL_WIDTH; ++x) {
@@ -244,6 +249,17 @@ void remove_enemy(Enemies *enemies, v2 pos) {
   }
 }
 
+void remove_obj(Objects *objs, v2 pos) {
+  for (int i = 0; i < objs->num; i++) {
+    if (objs->objects[i].x == pos.x && objs->objects[i].y == pos.y) {
+      v2 *pos = &objs->objects[i];
+      v2 *pos_lst = &objs->objects[objs->num - 1];
+      *pos = *pos_lst;
+      objs->num -= 1;
+    }
+  }
+}
+
 bool can_move_rock(Level *level, v2 pos, v2 next_pos) {
   if (((pos.x < next_pos.x) && (level->tiles[pos.y][next_pos.x + 1] == '_')) ||
       ((pos.x > next_pos.x) && (level->tiles[pos.y][next_pos.x - 1] == '_'))) {
@@ -264,37 +280,66 @@ void add_lock(Lock *locks, int x, int y) {
   assert(!"Not enough space for locks");
 }
 
-void remove_obj(Objects *objs, v2 pos) {
-  for (int i = 0; i < objs->num; i++) {
-    if (objs->objects[i].x == pos.x && objs->objects[i].y == pos.y) {
-      v2 *pos = &objs->objects[i];
-      v2 *pos_lst = &objs->objects[objs->num - 1];
-      *pos = *pos_lst;
-      objs->num -= 1;
-    }
-  }
-}
+void add_explosion(Level *level, v2 pos, char type) {
+  assert(type == 'f' || type == 'b');
 
-void delete_rock(Objects *rocks, v2 pos) {
-  for (int i = 0; i < rocks->num; i++) {
-    if (rocks->objects[i].x == pos.x && rocks->objects[i].y == pos.y) {
-      v2 *pos = &rocks->objects[i];
-      v2 *pos_lst = &rocks->objects[rocks->num - 1];
-      *pos = *pos_lst;
-      rocks->num -= 1;
-    }
-  }
-}
+  v2 start = sum_v2(pos, V2(-1, -1));
+  v2 end = sum_v2(pos, V2(1, 1));
 
-void collect_diamond(Objects *diamonds, v2 pos) {
-  for (int i = 0; i < diamonds->num; i++) {
-    if (diamonds->objects[i].x == pos.x && diamonds->objects[i].y == pos.y) {
-      v2 *pos = &diamonds->objects[i];
-      v2 *pos_lst = &diamonds->objects[diamonds->num - 1];
-      *pos = *pos_lst;
-      diamonds->num -= 1;
+  // Don't blow up the outer walls
+  if (start.x == 0) {
+    start.x++;
+    end.x++;
+  }
+  if (end.x == LEVEL_WIDTH - 1) {
+    start.x--;
+    end.x--;
+  }
+  if (start.y == 1) {
+    start.y++;
+    end.y++;
+  }
+  if (end.y == LEVEL_HEIGHT - 1) {
+    start.y--;
+    end.y--;
+  }
+
+  // Remove objects and set tiles
+  for (int y = start.y; y <= end.y; ++y) {
+    for (int x = start.x; x <= end.x; ++x) {
+      char tile = level->tiles[y][x];
+      assert(tile != 'W');
+      if (tile == 'r') {
+        remove_obj(&level->rocks, V2(x, y));
+      } else if (tile == 'd') {
+        remove_obj(&level->diamonds, V2(x, y));
+      } else if (tile == 'f') {
+        remove_enemy(&level->enemies, V2(x, y));
+      }
+      level->tiles[y][x] = '*';  // ignore this tile when draw
     }
   }
+
+  // Activate explosion
+  bool added = false;
+  for (int i = 0; i < COUNT(level->explosions); ++i) {
+    Explosion *explosion = &level->explosions[i];
+    if (explosion->active) continue;
+
+    explosion->active = true;
+    explosion->type = type;
+    explosion->pos_start = start;
+    explosion->pos_end = end;
+    explosion->start_time = time_now();
+
+    if (type == 'f') {
+      explosion->duration = 4.0 / 15.0;  // NOTE: based on the animation
+    } else if (type == 'b') {
+      // TODO
+    }
+    added = true;
+  }
+  assert(added);
 }
 
 void drop_objects(Level *level, char obj_sym) {
@@ -344,43 +389,10 @@ void drop_objects(Level *level, char obj_sym) {
 
     // Kill enemy
     if (tile_under == 'f') {
+      play_sound(SOUND_EXPLODED);
       play_fall_sound = true;
 
-      v2 explosion_start = {x - 1, y};
-      v2 explosion_end = {x + 1, y + 2};
-
-      // Don't blow up the outer walls
-      if (explosion_start.x == 0) {
-        explosion_start.x++;
-        explosion_end.x++;
-      }
-      if (explosion_end.x == LEVEL_WIDTH - 1) {
-        explosion_start.x--;
-        explosion_end.x--;
-      }
-      if (explosion_start.y == 1) {
-        explosion_start.y++;
-        explosion_end.y++;
-      }
-      if (explosion_end.y == LEVEL_HEIGHT - 1) {
-        explosion_start.y--;
-        explosion_end.y--;
-      }
-
-      for (int Y = explosion_start.y; Y <= explosion_end.y; ++Y) {
-        for (int X = explosion_start.x; X <= explosion_end.x; ++X) {
-          char tile = level->tiles[Y][X];
-          assert(tile != 'W');
-          if (tile == 'r') {
-            remove_obj(&level->rocks, V2(X, Y));
-          } else if (tile == 'd') {
-            remove_obj(&level->diamonds, V2(X, Y));
-          } else if (tile == 'f') {
-            remove_enemy(&level->enemies, V2(X, Y));
-          }
-          level->tiles[Y][X] = 'F';
-        }
-      }
+      add_explosion(level, V2(x, y + 1), 'f');
     }
 
     // Slide off rocks and diamonds
@@ -412,8 +424,6 @@ void drop_objects(Level *level, char obj_sym) {
       static int diamond_sound_num = 0;
       play_sound(SOUND_DIAMOND_1 + diamond_sound_num);
       diamond_sound_num = (diamond_sound_num + 1) % 7;
-    } else if (obj_sym == 'f') {
-      play_sound(SOUND_EXPLODED);
     }
   }
 }
@@ -517,7 +527,7 @@ int main() {
   u64 start = time_now();
 
   bool rock_is_pushed = false;
-  u64 rock_start_move_time = time_now();
+  u64 rock_start_move_time = start;
 
   SDL_GL_SetSwapInterval(1);
 
@@ -542,7 +552,7 @@ int main() {
   anim_enemy_exploded.fps = 15;
   anim_enemy_exploded.start_frame.x = 32;
   anim_enemy_exploded.start_frame.y = 0;
-  anim_enemy_exploded.times_to_play = 3;
+  anim_enemy_exploded.times_to_play = 1;
 
   Animation anim_butterfly = {};
   anim_butterfly.start_time = start;
@@ -853,6 +863,9 @@ int main() {
         v2 src = {0, 192};
         v2 dst = {x, y};
         char tile_type = level.tiles[viewport_y + y][viewport_x + x];
+        if (tile_type == '*') {
+          continue;  // ignore tile completely
+        }
         if (tile_type == 'r') {
           src.x = 0;
           src.y = 224;
@@ -883,10 +896,6 @@ int main() {
           v2 frame = get_frame(&anim_enemy);
           src.x = frame.x;
           src.y = frame.y;
-        } else if (tile_type == 'F') {
-          v2 frame = get_frame(&anim_enemy_exploded);
-          src.x = frame.x;
-          src.y = frame.y;
         } else if (tile_type == 'b') {
           v2 frame = get_frame(&anim_butterfly);
           src.x = frame.x;
@@ -902,6 +911,30 @@ int main() {
           }
         }
         draw_tile(draw_context, src, dst);
+      }
+    }
+
+    // Draw exposions
+    for (int i = 0; i < COUNT(level.explosions); ++i) {
+      Explosion *e = &level.explosions[i];
+      if (!e->active) continue;
+
+      Animation *anim = &anim_enemy_exploded;
+      anim->start_time = e->start_time;
+
+      if (seconds_since(e->start_time) > e->duration) {
+        e->active = false;
+        continue;
+      }
+
+      v2 src = {32, 192};
+      // v2 src = get_frame(anim);
+      printf("%d, %d\n", src.x, src.y);
+      for (int y = e->pos_start.y; y <= e->pos_end.y; ++y) {
+        for (int x = e->pos_start.x; x <= e->pos_end.x; ++x) {
+          // printf("%d, %d\n", x, y);
+          draw_tile(draw_context, src, V2(x, y));
+        }
       }
     }
 
