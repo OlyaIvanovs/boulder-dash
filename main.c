@@ -153,7 +153,7 @@ void load_level(Level *level, int num_level) {
 
   level->time_left = 150;
   level->score_per_diamond = 10;
-  level->min_diamonds = level->diamonds.num / 6;
+  level->min_diamonds = (level->diamonds.num + level->butterflies.num * 9) / 6;
   level->diamonds_collected = 0;
   level->can_exit = false;
 }
@@ -315,6 +315,8 @@ void add_explosion(Level *level, v2 pos, char type) {
         remove_obj(&level->diamonds, V2(x, y));
       } else if (tile == 'f') {
         remove_enemy(&level->enemies, V2(x, y));
+      } else if (tile == 'b') {
+        remove_enemy(&level->butterflies, V2(x, y));
       }
       level->tiles[y][x] = '*';  // ignore this tile when draw
     }
@@ -335,9 +337,10 @@ void add_explosion(Level *level, v2 pos, char type) {
     if (type == 'f') {
       explosion->duration = 4.0 / 15.0;  // NOTE: based on the animation
     } else if (type == 'b') {
-      // TODO
+      explosion->duration = 7.0 / 15.0;  // NOTE: based on the animation
     }
     added = true;
+    break;
   }
   assert(added);
 }
@@ -388,11 +391,11 @@ void drop_objects(Level *level, char obj_sym) {
     }
 
     // Kill enemy
-    if (tile_under == 'f') {
+    if (tile_under == 'f' || tile_under == 'b') {
       play_sound(SOUND_EXPLODED);
       play_fall_sound = true;
 
-      add_explosion(level, V2(x, y + 1), 'f');
+      add_explosion(level, V2(x, y + 1), tile_under);
     }
 
     // Slide off rocks and diamonds
@@ -561,6 +564,14 @@ int main() {
   anim_butterfly.start_frame.x = 0;
   anim_butterfly.start_frame.y = 352;
 
+  Animation anim_butterfly_exploded = {};
+  anim_butterfly_exploded.start_time = start;
+  anim_butterfly_exploded.num_frames = 7;
+  anim_butterfly_exploded.fps = 15;
+  anim_butterfly_exploded.start_frame.x = 64;
+  anim_butterfly_exploded.start_frame.y = 224;
+  anim_butterfly_exploded.times_to_play = 1;
+
   Animation anim_idle1 = {};
   anim_idle1.start_time = start;
   anim_idle1.num_frames = 8;
@@ -605,7 +616,7 @@ int main() {
 
   // Init level
   Level level = {};
-  int level_id = 1;
+  int level_id = 3;
   load_level(&level, level_id);
 
   u64 player_last_move_time = start;
@@ -813,6 +824,29 @@ int main() {
       }
     }
 
+    // Process active explosions
+    for (int i = 0; i < COUNT(level.explosions); ++i) {
+      Explosion *e = &level.explosions[i];
+      if (!e->active) continue;
+
+      if (seconds_since(e->start_time) > e->duration) {
+        e->active = false;
+        for (int y = e->pos_start.y; y <= e->pos_end.y; ++y) {
+          for (int x = e->pos_start.x; x <= e->pos_end.x; ++x) {
+            if (e->type == 'f') {
+              level.tiles[y][x] = '_';
+            } else if (e->type == 'b') {
+              level.tiles[y][x] = 'd';
+
+              // Add new diamond to level
+              level.diamonds.objects[level.diamonds.num++] = V2(x, y);
+              assert(level.diamonds.num < COUNT(level.diamonds.objects));
+            }
+          }
+        }
+      }
+    }
+
     // Choose player animation
     if (seconds_since(player_last_move_time) > 5) {
       if (seconds_since(player_last_move_time) > 10) {
@@ -919,13 +953,13 @@ int main() {
       Explosion *e = &level.explosions[i];
       if (!e->active) continue;
 
-      Animation *anim = &anim_enemy_exploded;
-      anim->start_time = e->start_time;
-
-      if (seconds_since(e->start_time) > e->duration) {
-        e->active = false;
-        continue;
+      Animation *anim;
+      if (e->type == 'f') {
+        anim = &anim_enemy_exploded;
+      } else if (e->type == 'b') {
+        anim = &anim_butterfly_exploded;
       }
+      anim->start_time = e->start_time;
 
       v2 src = get_frame(anim);
       for (int y = e->pos_start.y; y <= e->pos_end.y; ++y) {
