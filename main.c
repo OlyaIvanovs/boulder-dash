@@ -927,13 +927,10 @@ int main() {
         continue;
       }
 
-      v2 src = {32, 192};
-      // v2 src = get_frame(anim);
-      printf("%d, %d\n", src.x, src.y);
+      v2 src = get_frame(anim);
       for (int y = e->pos_start.y; y <= e->pos_end.y; ++y) {
         for (int x = e->pos_start.x; x <= e->pos_end.x; ++x) {
-          // printf("%d, %d\n", x, y);
-          draw_tile(draw_context, src, V2(x, y));
+          draw_tile(draw_context, src, V2(x - viewport_x, y - viewport_y));
         }
       }
     }
