@@ -308,7 +308,6 @@ void add_explosion(Level *level, v2 pos, char type) {
   for (int y = start.y; y <= end.y; ++y) {
     for (int x = start.x; x <= end.x; ++x) {
       char tile = level->tiles[y][x];
-      assert(tile != 'W');
       if (tile == 'r') {
         remove_obj(&level->rocks, V2(x, y));
       } else if (tile == 'd') {
@@ -616,7 +615,7 @@ int main() {
 
   // Init level
   Level level = {};
-  int level_id = 3;
+  int level_id = 4;
   load_level(&level, level_id);
 
   u64 player_last_move_time = start;
@@ -635,6 +634,7 @@ int main() {
   int walking_sound_cooldown = 1;
 
   int is_running = 1;
+main_loop:
   while (is_running) {
     bool white_tunnel = false;
     double frame_time = seconds_since(start);  // for animation
@@ -678,6 +678,10 @@ int main() {
         }
         if (event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
           input.down = false;
+        }
+        if (event.key.keysym.sym == 'r') {
+          load_level(&level, level_id);
+          goto main_loop;
         }
       }
     }
