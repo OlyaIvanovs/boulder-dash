@@ -108,6 +108,11 @@ typedef struct Level {
   bool can_exit;
 } Level;
 
+typedef struct Viewport {
+  int x;
+  int y;
+} Viewport;
+
 void load_level(Level *level, int num_level) {
   SDL_memset(level, 0, sizeof(*level));
   SDL_memcpy(level->tiles, gLevels[num_level], LEVEL_HEIGHT * LEVEL_WIDTH);
@@ -430,12 +435,15 @@ void drop_objects(Level *level, char obj_sym) {
   }
 }
 
-void draw_tile(DrawContext context, v2 src, v2 dst) {
+void draw_tile_px(DrawContext context, v2 src, v2 dst) {
   SDL_Rect src_rect = {src.x, src.y, 32, 32};
-  SDL_Rect dst_rect = {context.window_offset.x + dst.x * context.tile_size,
-                       context.window_offset.y + dst.y * context.tile_size, context.tile_size,
-                       context.tile_size};
+  SDL_Rect dst_rect = {context.window_offset.x + dst.x, context.window_offset.y + dst.y,
+                       context.tile_size, context.tile_size};
   SDL_RenderCopy(context.renderer, context.texture, &src_rect, &dst_rect);
+}
+
+void draw_tile(DrawContext context, v2 src, v2 dst) {
+  draw_tile_px(context, src, V2(dst.x * context.tile_size, dst.y * context.tile_size));
 }
 
 void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digits) {
@@ -514,7 +522,7 @@ int main() {
   int viewport_y = 0;
   int viewport_width = 30;
   int tile_size = window_width / viewport_width;
-  int viewport_height = window_height / tile_size;
+  int viewport_height = (window_height / tile_size) - 1;
 
   v2 window_offset = {};
   window_offset.x = (window_width % tile_size) / 2;  // to adjust tiles
@@ -615,7 +623,7 @@ int main() {
 
   // Init level
   Level level = {};
-  int level_id = 4;
+  int level_id = 3;
   load_level(&level, level_id);
 
   u64 player_last_move_time = start;
@@ -896,11 +904,16 @@ main_loop:
     draw_number(draw_context, time_to_show, pos_time, COLOR_WHITE, 3);
 
     // Draw level
-    for (int y = 1; y < viewport_height; y++) {
-      for (int x = 0; x < viewport_width; x++) {
+    Viewport viewport;
+    viewport.x = (int)(tile_size * 1.5);
+    viewport.y = (int)(tile_size * 1.5);
+
+    for (int y = 0; y < viewport_height + 1; y++) {
+      for (int x = 0; x < viewport_width + 1; x++) {
         v2 src = {0, 192};
-        v2 dst = {x, y};
-        char tile_type = level.tiles[viewport_y + y][viewport_x + x];
+        v2 dst = {x * tile_size - viewport.x % tile_size,
+                  (y + 1) * tile_size - viewport.y % tile_size};
+        char tile_type = level.tiles[viewport.y / tile_size + y][viewport.x / tile_size + x];
         if (tile_type == '*') {
           continue;  // ignore tile completely
         }
@@ -948,7 +961,7 @@ main_loop:
             src.y = 192;
           }
         }
-        draw_tile(draw_context, src, dst);
+        draw_tile_px(draw_context, src, dst);
       }
     }
 
@@ -968,7 +981,8 @@ main_loop:
       v2 src = get_frame(anim);
       for (int y = e->pos_start.y; y <= e->pos_end.y; ++y) {
         for (int x = e->pos_start.x; x <= e->pos_end.x; ++x) {
-          draw_tile(draw_context, src, V2(x - viewport_x, y - viewport_y));
+          draw_tile_px(draw_context, src,
+                       V2((x - viewport_x) * tile_size, (y - viewport_y) * tile_size));
         }
       }
     }
