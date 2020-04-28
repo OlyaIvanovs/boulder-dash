@@ -99,7 +99,7 @@ typedef struct Level {
   Enemies butterflies;
   Lock locks[10];
   Explosion explosions[5];
-  v2 player_pos;
+  v2 player_pos;  // in tiles
   v2 enemy_pos;
   int time_left;
   int score_per_diamond;
@@ -109,8 +109,14 @@ typedef struct Level {
 } Level;
 
 typedef struct Viewport {
+  // in pixels
   int x;
   int y;
+  v2 max;
+
+  // in tiles
+  int width;
+  int height;
 } Viewport;
 
 void load_level(Level *level, int num_level) {
@@ -518,18 +524,23 @@ int main() {
     return 1;
   }
 
-  int viewport_x = 0;
-  int viewport_y = 0;
-  int viewport_width = 30;
-  int tile_size = window_width / viewport_width;
-  int viewport_height = (window_height / tile_size) - 1;
+  Viewport viewport;
+  viewport.x = 0;
+  viewport.y = 0;
+  viewport.width = 30;
+
+  int tile_size = window_width / viewport.width;
+
+  viewport.height = (window_height / tile_size) - 1;  // subtract one for the status bar on top
+
+  // Increase viewport size by one so that we can draw parts of tiles
+  viewport.width++;
+  viewport.height++;
+  viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
 
   v2 window_offset = {};
   window_offset.x = (window_width % tile_size) / 2;  // to adjust tiles
   window_offset.y = (window_height % tile_size) / 2;
-
-  int viewport_x_max = LEVEL_WIDTH - viewport_width;
-  int viewport_y_max = LEVEL_HEIGHT - viewport_height;
 
   DrawContext draw_context = {renderer, texture, window_offset, tile_size};
 
@@ -744,14 +755,6 @@ main_loop:
         player_last_move_time = time_now();
       }
 
-      // Move enemy
-      if (seconds_since(enemy_move_last_time) > kEnemyMoveDelay) {
-        enemy_move_last_time = time_now();
-
-        move_enemies(&level, 'f');
-        move_enemies(&level, 'b');
-      }
-
       // Push rock
       if (next_tile == 'r' && can_move_rock(&level, level.player_pos, next_player_pos)) {
         if (!rock_is_pushed) {
@@ -784,39 +787,58 @@ main_loop:
         rock_start_move_time = time_now();
         rock_is_pushed = false;
       }
+    }
 
-      // Move viewport
-      {
-        int rel_player_x = level.player_pos.x - viewport_x;
-        if (rel_player_x >= 20) {
-          viewport_x += rel_player_x - 20;
-          if (viewport_x > viewport_x_max) {
-            viewport_x = viewport_x_max;
-          }
+    // Move viewport
+    {
+      v2 viewport_pos = {viewport.x / tile_size, viewport.y / tile_size};
+      v2 target_pos = viewport_pos;
+
+      int rel_player_x = level.player_pos.x - viewport_pos.x;
+      if (rel_player_x >= 20) {
+        target_pos.x += rel_player_x - 20;
+        if (target_pos.x > viewport.max.x) {
+          target_pos.x = viewport.max.x;
         }
-        if (rel_player_x <= 9) {
-          viewport_x -= 9 - rel_player_x;
-          if (viewport_x < 0) {
-            viewport_x = 0;
-          }
+      }
+      if (rel_player_x <= 9) {
+        target_pos.x -= 9 - rel_player_x;
+        if (target_pos.x < 0) {
+          target_pos.x = 0;
         }
-        int rel_player_y = level.player_pos.y - viewport_y;
-        if (rel_player_y >= 13) {
-          viewport_y += rel_player_y - 13;
-          if (viewport_y > viewport_y_max) {
-            viewport_y = viewport_y_max;
-          }
+      }
+
+      int rel_player_y = level.player_pos.y - viewport_pos.y;
+      if (rel_player_y >= 13) {
+        target_pos.y += rel_player_y - 13;
+        if (target_pos.y > viewport.max.y) {
+          target_pos.y = viewport.max.y;
         }
-        if (rel_player_y <= 6) {
-          viewport_y -= 6 - rel_player_y;
-          if (viewport_y < 0) {
-            viewport_y = 0;
-          }
+      }
+      if (rel_player_y <= 6) {
+        target_pos.y -= 6 - rel_player_y;
+        if (target_pos.y < 0) {
+          target_pos.y = 0;
         }
+      }
+
+      if (viewport.x < target_pos.x * tile_size) {
+        viewport.x += 32;
+      }
+      if (viewport.y < target_pos.y * tile_size) {
+        viewport.y += 32;
       }
     }
 
-    // Drop rocks
+    // Move enemy
+    if (seconds_since(enemy_move_last_time) > kEnemyMoveDelay) {
+      enemy_move_last_time = time_now();
+
+      move_enemies(&level, 'f');
+      move_enemies(&level, 'b');
+    }
+
+    // Drop rocks and diamonds
     if (seconds_since(drop_last_time) > kDropDelay) {
       drop_last_time = time_now();
       drop_objects(&level, 'r');
@@ -892,11 +914,11 @@ main_loop:
     draw_number(draw_context, level.diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
 
     // Display overall score
-    v2 pos_score = {viewport_width - 6, 0};
+    v2 pos_score = {viewport.width - 6, 0};
     draw_number(draw_context, score, pos_score, COLOR_WHITE, 6);
 
     // Display time
-    v2 pos_time = {viewport_width / 2, 0};
+    v2 pos_time = {viewport.width / 2, 0};
     int time_to_show = level.time_left - (int)(seconds_since(start));
     if (time_to_show < 0) {
       time_to_show = 0;
@@ -904,12 +926,8 @@ main_loop:
     draw_number(draw_context, time_to_show, pos_time, COLOR_WHITE, 3);
 
     // Draw level
-    Viewport viewport;
-    viewport.x = (int)(tile_size * 1.5);
-    viewport.y = (int)(tile_size * 1.5);
-
-    for (int y = 0; y < viewport_height + 1; y++) {
-      for (int x = 0; x < viewport_width + 1; x++) {
+    for (int y = 0; y < viewport.height; y++) {
+      for (int x = 0; x < viewport.width; x++) {
         v2 src = {0, 192};
         v2 dst = {x * tile_size - viewport.x % tile_size,
                   (y + 1) * tile_size - viewport.y % tile_size};
@@ -982,7 +1000,7 @@ main_loop:
       for (int y = e->pos_start.y; y <= e->pos_end.y; ++y) {
         for (int x = e->pos_start.x; x <= e->pos_end.x; ++x) {
           draw_tile_px(draw_context, src,
-                       V2((x - viewport_x) * tile_size, (y - viewport_y) * tile_size));
+                       V2((x - viewport.x) * tile_size, (y - viewport.y) * tile_size));
         }
       }
     }
