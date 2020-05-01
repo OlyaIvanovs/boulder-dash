@@ -499,29 +499,34 @@ int main() {
   int window_width, window_height;
   SDL_GetWindowSize(window, &window_width, &window_height);
 
-  SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+  SDL_Renderer *renderer =
+      SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
   if (renderer == NULL) {
     printf("Couldn't create renderer: %s\n", SDL_GetError());
     return 1;
   }
 
-  int width, height, num_channels;
-  void *pixels = stbi_load("bd-sprites.png", &width, &height, &num_channels, 0);
+  // Load texture
+  SDL_Texture *texture;
+  {
+    int width, height, num_channels;
+    void *pixels = stbi_load("bd-sprites.png", &width, &height, &num_channels, 0);
 
-  SDL_Rect rect = {0, 0, width, height};
+    SDL_Rect rect = {0, 0, width, height};
 
-  SDL_Texture *texture =
-      SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
-  if (texture == NULL) {
-    printf("Couldn't create texture: %s\n", SDL_GetError());
-    return 1;
-  }
+    texture =
+        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
+    if (texture == NULL) {
+      printf("Couldn't create texture: %s\n", SDL_GetError());
+      return 1;
+    }
 
-  int result = SDL_UpdateTexture(texture, &rect, pixels,
-                                 width * num_channels);  // load to video memory
-  if (result != 0) {
-    printf("Couldn't update texture: %s\n", SDL_GetError());
-    return 1;
+    int result = SDL_UpdateTexture(texture, &rect, pixels,
+                                   width * num_channels);  // load to video memory
+    if (result != 0) {
+      printf("Couldn't update texture: %s\n", SDL_GetError());
+      return 1;
+    }
   }
 
   Viewport viewport;
@@ -544,93 +549,79 @@ int main() {
 
   DrawContext draw_context = {renderer, texture, window_offset, tile_size};
 
-  int num_loops = 0;
   u64 start = time_now();
 
   bool rock_is_pushed = false;
   u64 rock_start_move_time = start;
-
-  SDL_GL_SetSwapInterval(1);
 
   // Init animations
   Animation anim_diamond = {};
   anim_diamond.start_time = start;
   anim_diamond.num_frames = 8;
   anim_diamond.fps = 15;
-  anim_diamond.start_frame.x = 0;
-  anim_diamond.start_frame.y = 320;
+  anim_diamond.start_frame = V2(0, 320);
 
   Animation anim_enemy = {};
   anim_enemy.start_time = start;
   anim_enemy.num_frames = 8;
   anim_enemy.fps = 15;
-  anim_enemy.start_frame.x = 0;
-  anim_enemy.start_frame.y = 288;
+  anim_enemy.start_frame = V2(0, 288);
 
   Animation anim_enemy_exploded = {};
   anim_enemy_exploded.start_time = start;
   anim_enemy_exploded.num_frames = 4;
   anim_enemy_exploded.fps = 15;
-  anim_enemy_exploded.start_frame.x = 32;
-  anim_enemy_exploded.start_frame.y = 0;
+  anim_enemy_exploded.start_frame = V2(32, 0);
   anim_enemy_exploded.times_to_play = 1;
 
   Animation anim_butterfly = {};
   anim_butterfly.start_time = start;
   anim_butterfly.num_frames = 8;
   anim_butterfly.fps = 15;
-  anim_butterfly.start_frame.x = 0;
-  anim_butterfly.start_frame.y = 352;
+  anim_butterfly.start_frame = V2(0, 352);
 
   Animation anim_butterfly_exploded = {};
   anim_butterfly_exploded.start_time = start;
   anim_butterfly_exploded.num_frames = 7;
   anim_butterfly_exploded.fps = 15;
-  anim_butterfly_exploded.start_frame.x = 64;
-  anim_butterfly_exploded.start_frame.y = 224;
+  anim_butterfly_exploded.start_frame = V2(64, 224);
   anim_butterfly_exploded.times_to_play = 1;
 
   Animation anim_idle1 = {};
   anim_idle1.start_time = start;
   anim_idle1.num_frames = 8;
   anim_idle1.fps = 15;
-  anim_idle1.start_frame.x = 0;
-  anim_idle1.start_frame.y = 33;
+  anim_idle1.start_frame = V2(0, 33);
 
   Animation anim_go_left = {};
   anim_go_left.start_time = start;
   anim_go_left.num_frames = 8;
   anim_go_left.fps = 25;
-  anim_go_left.start_frame.x = 0;
-  anim_go_left.start_frame.y = 128;
+  anim_go_left.start_frame = V2(0, 128);
 
   Animation anim_go_right = {};
   anim_go_right.start_time = start;
   anim_go_right.num_frames = 8;
   anim_go_right.fps = 25;
-  anim_go_right.start_frame.x = 0;
-  anim_go_right.start_frame.y = 160;
+  anim_go_right.start_frame = V2(0, 160);
 
   Animation anim_idle2 = {};
   anim_idle2.start_time = start;
   anim_idle2.num_frames = 8;
   anim_idle2.fps = 10;
-  anim_idle2.start_frame.x = 0;
-  anim_idle2.start_frame.y = 66;
+  anim_idle2.start_frame = V2(0, 66);
 
   Animation anim_idle3 = {};
   anim_idle3.start_time = start;
   anim_idle3.num_frames = 8;
   anim_idle3.fps = 10;
-  anim_idle3.start_frame.x = 0;
-  anim_idle3.start_frame.y = 98;
+  anim_idle3.start_frame = V2(0, 98);
 
   Animation anim_exit = {};
   anim_exit.start_time = start;
   anim_exit.num_frames = 2;  // no exit annimation until all diamonds are collected
   anim_exit.fps = 4;
-  anim_exit.start_frame.x = 32;
-  anim_exit.start_frame.y = 192;
+  anim_exit.start_frame = V2(32, 192);
 
   // Init level
   Level level = {};
@@ -936,47 +927,30 @@ main_loop:
           continue;  // ignore tile completely
         }
         if (tile_type == 'r') {
-          src.x = 0;
-          src.y = 224;
+          src = V2(0, 224);
         } else if (tile_type == 'w') {
-          src.x = 96;
-          src.y = 192;
+          src = V2(96, 192);
         } else if (tile_type == 'W') {
-          src.x = 32;
-          src.y = 192;
+          src = V2(32, 192);
         } else if (tile_type == '.') {
-          src.x = 32;
-          src.y = 224;
+          src = V2(32, 224);
         } else if (tile_type == 'l') {
-          src.x = 288;
-          src.y = 0;
+          src = V2(288, 0);
         } else if (tile_type == '_' && white_tunnel) {
-          src.x = 300;
-          src.y = 0;
+          src = V2(300, 0);
         } else if (tile_type == 'E') {
-          v2 frame = get_frame(player_animation);
-          src.x = frame.x;
-          src.y = frame.y;
+          src = get_frame(player_animation);
         } else if (tile_type == 'd') {
-          v2 frame = get_frame(&anim_diamond);
-          src.x = frame.x;
-          src.y = frame.y;
+          src = get_frame(&anim_diamond);
         } else if (tile_type == 'f') {
-          v2 frame = get_frame(&anim_enemy);
-          src.x = frame.x;
-          src.y = frame.y;
+          src = get_frame(&anim_enemy);
         } else if (tile_type == 'b') {
-          v2 frame = get_frame(&anim_butterfly);
-          src.x = frame.x;
-          src.y = frame.y;
+          src = get_frame(&anim_butterfly);
         } else if (tile_type == 'X') {
           if (level.can_exit) {
-            v2 frame = get_frame(&anim_exit);
-            src.x = frame.x;
-            src.y = frame.y;
+            src = get_frame(&anim_exit);
           } else {
-            src.x = 32;
-            src.y = 192;
+            src = V2(32, 192);
           }
         }
         draw_tile_px(draw_context, src, dst);
@@ -1006,6 +980,7 @@ main_loop:
     }
 
     SDL_RenderPresent(renderer);
+    SDL_RenderClear(renderer);
 
     // {
     //     u64 now = time_now();
@@ -1013,8 +988,6 @@ main_loop:
     //     gPerformanceFrequency; start = now; printf("MS %.3lf \n",
     //     elapsed_ms);
     // }
-
-    num_loops++;
   }
 
   SDL_CloseAudioDevice(audio_device_id);
