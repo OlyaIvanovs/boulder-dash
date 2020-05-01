@@ -537,11 +537,11 @@ int main() {
   int tile_size = window_width / viewport.width;
 
   viewport.height = (window_height / tile_size) - 1;  // subtract one for the status bar on top
+  viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
 
   // Increase viewport size by one so that we can draw parts of tiles
   viewport.width++;
   viewport.height++;
-  viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
 
   v2 window_offset = {};
   window_offset.x = (window_width % tile_size) / 2;  // to adjust tiles
@@ -814,10 +814,16 @@ main_loop:
       }
 
       if (viewport.x < target_pos.x * tile_size) {
-        viewport.x += 32;
+        viewport.x += tile_size;
+      }
+      if (viewport.x > target_pos.x * tile_size) {
+        viewport.x -= tile_size;
       }
       if (viewport.y < target_pos.y * tile_size) {
-        viewport.y += 32;
+        viewport.y += tile_size;
+      }
+      if (viewport.y > target_pos.y * tile_size) {
+        viewport.y -= tile_size;
       }
     }
 
@@ -905,7 +911,7 @@ main_loop:
     draw_number(draw_context, level.diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
 
     // Display overall score
-    v2 pos_score = {viewport.width - 6, 0};
+    v2 pos_score = {viewport.width - 7, 0};
     draw_number(draw_context, score, pos_score, COLOR_WHITE, 6);
 
     // Display time
@@ -957,7 +963,7 @@ main_loop:
       }
     }
 
-    // Draw exposions
+    // Draw explosions
     for (int i = 0; i < COUNT(level.explosions); ++i) {
       Explosion *e = &level.explosions[i];
       if (!e->active) continue;
@@ -974,7 +980,7 @@ main_loop:
       for (int y = e->pos_start.y; y <= e->pos_end.y; ++y) {
         for (int x = e->pos_start.x; x <= e->pos_end.x; ++x) {
           draw_tile_px(draw_context, src,
-                       V2((x - viewport.x) * tile_size, (y - viewport.y) * tile_size));
+                       V2(x * tile_size - viewport.x, y * tile_size - viewport.y));
         }
       }
     }
