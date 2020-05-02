@@ -47,6 +47,18 @@ static inline v2 sum_v2(v2 a, v2 b) {
   return V2(a.x + b.x, a.y + b.y);
 }
 
+typedef struct Rect {
+  int left;
+  int top;
+  int right;
+  int bottom;
+} Rect;
+
+static inline Rect create_rect(int left, int top, int right, int bottom) {
+  Rect result = {left, top, right, bottom};
+  return result;
+}
+
 typedef struct Objects {
   v2 objects[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
   int num;
@@ -117,6 +129,9 @@ typedef struct Viewport {
   // in tiles
   int width;
   int height;
+
+  // Viewport will move if player moves outside this area
+  Rect player_area;
 } Viewport;
 
 void load_level(Level *level, int num_level) {
@@ -539,6 +554,9 @@ int main() {
   viewport.height = (window_height / tile_size) - 1;  // subtract one for the status bar on top
   viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
 
+  viewport.player_area = create_rect(viewport.width / 3, viewport.height / 3,
+                                     viewport.width * 2 / 3, viewport.height * 2 / 3);
+
   // Increase viewport size by one so that we can draw parts of tiles
   viewport.width++;
   viewport.height++;
@@ -786,28 +804,28 @@ main_loop:
       v2 target_pos = viewport_pos;
 
       int rel_player_x = level.player_pos.x - viewport_pos.x;
-      if (rel_player_x >= 20) {
-        target_pos.x += rel_player_x - 20;
+      if (rel_player_x >= viewport.player_area.right) {
+        target_pos.x += rel_player_x - viewport.player_area.right;
         if (target_pos.x > viewport.max.x) {
           target_pos.x = viewport.max.x;
         }
       }
-      if (rel_player_x <= 9) {
-        target_pos.x -= 9 - rel_player_x;
+      if (rel_player_x <= viewport.player_area.left) {
+        target_pos.x -= viewport.player_area.left - rel_player_x;
         if (target_pos.x < 0) {
           target_pos.x = 0;
         }
       }
 
       int rel_player_y = level.player_pos.y - viewport_pos.y;
-      if (rel_player_y >= 13) {
-        target_pos.y += rel_player_y - 13;
+      if (rel_player_y >= viewport.player_area.bottom) {
+        target_pos.y += rel_player_y - viewport.player_area.bottom;
         if (target_pos.y > viewport.max.y) {
           target_pos.y = viewport.max.y;
         }
       }
-      if (rel_player_y <= 6) {
-        target_pos.y -= 6 - rel_player_y;
+      if (rel_player_y <= viewport.player_area.top) {
+        target_pos.y -= viewport.player_area.top - rel_player_y;
         if (target_pos.y < 0) {
           target_pos.y = 0;
         }
