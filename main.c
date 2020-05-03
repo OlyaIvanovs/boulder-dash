@@ -90,8 +90,7 @@ typedef struct {
 typedef struct Explosion {
   bool active;
   char type;
-  v2 pos_start;
-  v2 pos_end;
+  Rect area;
   u64 start_time;
   double duration;  // in seconds
 } Explosion;
@@ -330,9 +329,11 @@ void add_explosion(Level *level, v2 pos, char type) {
     end.y--;
   }
 
+  Rect area = create_rect(start.x, start.y, end.x, end.y);
+
   // Remove objects and set tiles
-  for (int y = start.y; y <= end.y; ++y) {
-    for (int x = start.x; x <= end.x; ++x) {
+  for (int y = area.top; y <= area.bottom; ++y) {
+    for (int x = area.left; x <= area.right; ++x) {
       char tile = level->tiles[y][x];
       if (tile == 'r') {
         remove_obj(&level->rocks, V2(x, y));
@@ -355,8 +356,7 @@ void add_explosion(Level *level, v2 pos, char type) {
 
     explosion->active = true;
     explosion->type = type;
-    explosion->pos_start = start;
-    explosion->pos_end = end;
+    explosion->area = area;
     explosion->start_time = time_now();
 
     if (type == 'f') {
@@ -551,7 +551,7 @@ int main() {
 
   int tile_size = window_width / viewport.width;
 
-  viewport.height = (window_height / tile_size) - 1;  // subtract one for the status bar on top
+  viewport.height = (window_height / tile_size);
   viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
 
   viewport.player_area = create_rect(viewport.width / 3, viewport.height / 3,
@@ -880,8 +880,8 @@ main_loop:
 
       if (seconds_since(e->start_time) > e->duration) {
         e->active = false;
-        for (int y = e->pos_start.y; y <= e->pos_end.y; ++y) {
-          for (int x = e->pos_start.x; x <= e->pos_end.x; ++x) {
+        for (int y = e->area.top; y <= e->area.bottom; ++y) {
+          for (int x = e->area.left; x <= e->area.right; ++x) {
             if (e->type == 'f') {
               level.tiles[y][x] = '_';
             } else if (e->type == 'b') {
@@ -911,41 +911,11 @@ main_loop:
       player_animation = &anim_idle1;
     }
 
-    // Draw status
-    // Display number of diamonds to collect
-    v2 white_diamond = {256, 32};
-    draw_tile(draw_context, white_diamond, V2(2, 0));
-
-    if (level.diamonds_collected < level.min_diamonds) {
-      draw_number(draw_context, level.min_diamonds, V2(0, 0), COLOR_YELLOW, 2);
-    } else {
-      draw_tile(draw_context, white_diamond, V2(0, 0));
-      draw_tile(draw_context, white_diamond, V2(1, 0));
-    }
-    draw_number(draw_context, level.score_per_diamond, V2(3, 0), COLOR_WHITE, 2);
-
-    // Display number of collected diamonds
-    v2 pos_diamonds = {10, 0};
-    draw_number(draw_context, level.diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
-
-    // Display overall score
-    v2 pos_score = {viewport.width - 7, 0};
-    draw_number(draw_context, score, pos_score, COLOR_WHITE, 6);
-
-    // Display time
-    v2 pos_time = {viewport.width / 2, 0};
-    int time_to_show = level.time_left - (int)(seconds_since(start));
-    if (time_to_show < 0) {
-      time_to_show = 0;
-    }
-    draw_number(draw_context, time_to_show, pos_time, COLOR_WHITE, 3);
-
     // Draw level
     for (int y = 0; y < viewport.height; y++) {
       for (int x = 0; x < viewport.width; x++) {
         v2 src = {0, 192};
-        v2 dst = {x * tile_size - viewport.x % tile_size,
-                  (y + 1) * tile_size - viewport.y % tile_size};
+        v2 dst = {x * tile_size - viewport.x % tile_size, y * tile_size - viewport.y % tile_size};
         char tile_type = level.tiles[viewport.y / tile_size + y][viewport.x / tile_size + x];
         if (tile_type == '*') {
           continue;  // ignore tile completely
@@ -958,8 +928,8 @@ main_loop:
           src = V2(32, 192);
         } else if (tile_type == '.') {
           src = V2(32, 224);
-        } else if (tile_type == 'l') {
-          src = V2(288, 0);
+          // } else if (tile_type == 'l') {
+          //   src = V2(288, 0);
         } else if (tile_type == '_' && white_tunnel) {
           src = V2(300, 0);
         } else if (tile_type == 'E') {
@@ -995,13 +965,47 @@ main_loop:
       anim->start_time = e->start_time;
 
       v2 src = get_frame(anim);
-      for (int y = e->pos_start.y; y <= e->pos_end.y; ++y) {
-        for (int x = e->pos_start.x; x <= e->pos_end.x; ++x) {
+      for (int y = e->area.top; y <= e->area.bottom; ++y) {
+        for (int x = e->area.left; x <= e->area.right; ++x) {
           draw_tile_px(draw_context, src,
                        V2(x * tile_size - viewport.x, y * tile_size - viewport.y));
         }
       }
     }
+
+    // Draw status
+    // Draw status bar's background black
+    for (int x = 0; x < (viewport.width - 1); x++) {
+      draw_tile(draw_context, V2(128, 0), V2(x, 0));
+    }
+
+    // Display number of diamonds to collect
+    v2 white_diamond = {256, 32};
+    draw_tile(draw_context, white_diamond, V2(2, 0));
+
+    if (level.diamonds_collected < level.min_diamonds) {
+      draw_number(draw_context, level.min_diamonds, V2(0, 0), COLOR_YELLOW, 2);
+    } else {
+      draw_tile(draw_context, white_diamond, V2(0, 0));
+      draw_tile(draw_context, white_diamond, V2(1, 0));
+    }
+    draw_number(draw_context, level.score_per_diamond, V2(3, 0), COLOR_WHITE, 2);
+
+    // Display number of collected diamonds
+    v2 pos_diamonds = {10, 0};
+    draw_number(draw_context, level.diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
+
+    // Display overall score
+    v2 pos_score = {viewport.width - 7, 0};
+    draw_number(draw_context, score, pos_score, COLOR_WHITE, 6);
+
+    // Display time
+    v2 pos_time = {viewport.width / 2, 0};
+    int time_to_show = level.time_left - (int)(seconds_since(start));
+    if (time_to_show < 0) {
+      time_to_show = 0;
+    }
+    draw_number(draw_context, time_to_show, pos_time, COLOR_WHITE, 3);
 
     SDL_RenderPresent(renderer);
     SDL_RenderClear(renderer);
