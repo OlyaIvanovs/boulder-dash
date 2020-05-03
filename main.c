@@ -655,6 +655,7 @@ int main() {
   Input input = {false, false, false, false};
 
   Animation *player_animation = &anim_idle1;
+  Animation *previos_direction_anim = &anim_go_right;
 
   int score = 0;
 
@@ -897,6 +898,7 @@ main_loop:
     }
 
     // Choose player animation
+
     if (seconds_since(player_last_move_time) > 5) {
       if (seconds_since(player_last_move_time) > 10) {
         player_animation = &anim_idle3;
@@ -905,8 +907,12 @@ main_loop:
       }
     } else if (input.right) {
       player_animation = &anim_go_right;
+      previos_direction_anim = &anim_go_right;
     } else if (input.left) {
       player_animation = &anim_go_left;
+      previos_direction_anim = &anim_go_left;
+    } else if (input.up || input.down) {
+      player_animation = previos_direction_anim;
     } else {
       player_animation = &anim_idle1;
     }
