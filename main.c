@@ -11,13 +11,16 @@
 #include "levels.h"
 #include "lib/stb_image.h"
 
-u64 time_now() {
-  return SDL_GetPerformanceCounter();
-}
+// ======================================= Types ===================================================
 
-double seconds_since(u64 timestamp) {
-  return (double)(time_now() - timestamp) / gPerformanceFrequency;
-}
+typedef enum StateId {
+  MENU,
+  LEVEL_STARTING,
+  LEVEL_GAMEPLAY,
+  LEVEL_ENDING,
+  PLAYER_DYING,
+  YOU_WIN,
+} StateId;
 
 typedef enum {
   COLOR_WHITE = 0,
@@ -132,6 +135,44 @@ typedef struct Viewport {
   // Viewport will move if player moves outside this area
   Rect player_area;
 } Viewport;
+
+typedef enum AnimationId {
+  ANIM_DIAMOND,
+  ANIM_ENEMY,
+  ANIM_ENEMY_EXPLODED,
+  ANIM_BUTTERFLY,
+  ANIM_BUTTERFLY_EXPLODED,
+  ANIM_IDLE1,
+  ANIM_GO_LEFT,
+  ANIM_GO_RIGHT,
+  ANIM_IDLE2,
+  ANIM_IDLE3,
+  ANIM_EXIT,
+
+  ANIM_COUNT,
+}
+
+typedef struct GameState {
+  Level level;
+  DrawContext draw_context;
+  Viewport viewport;
+  int level_id;
+  int score;
+} GameState;
+
+// ======================================= Globals =================================================
+
+Animation gAnimations[ANIM_COUNT];
+
+// ======================================= Functions ===============================================
+
+u64 time_now() {
+  return SDL_GetPerformanceCounter();
+}
+
+double seconds_since(u64 timestamp) {
+  return (double)(time_now() - timestamp) / gPerformanceFrequency;
+}
 
 void load_level(Level *level, int num_level) {
   SDL_memset(level, 0, sizeof(*level));
@@ -489,181 +530,38 @@ void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digi
   }
 }
 
-int main() {
-  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO) < 0) {
-    return 1;
-  }
-  gPerformanceFrequency = (double)SDL_GetPerformanceFrequency();
+Animation create_animation(u64 start_time, int num_frames, int fps, v2 start_frame,
+                           int times_to_play) {
+  Animation animation = {};
+  animation.start_time = start_time;
+  animation.num_frames = num_frames;
+  animation.fps = fps;
+  animation.start_frame = start_frame;
+  animation.times_to_play = times_to_play;
+  return animation;
+}
 
-  // Audio
-  SDL_AudioDeviceID audio_device_id = init_audio();
-  if (audio_device_id == 0) {
-    printf("Couldn't init audio\n");
-    return 1;
-  }
-
-  SDL_Window *window =
-      SDL_CreateWindow("Boulder-Dash", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 960, 480,
-                       SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
-
-  if (window == NULL) {
-    printf("Couldn't create window: %s\n", SDL_GetError());
-    return 1;
-  }
-
-  int window_width, window_height;
-  SDL_GetWindowSize(window, &window_width, &window_height);
-
-  SDL_Renderer *renderer =
-      SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-  if (renderer == NULL) {
-    printf("Couldn't create renderer: %s\n", SDL_GetError());
-    return 1;
-  }
-
-  // Load texture
-  SDL_Texture *texture;
-  {
-    int width, height, num_channels;
-    void *pixels = stbi_load("bd-sprites.png", &width, &height, &num_channels, 0);
-
-    SDL_Rect rect = {0, 0, width, height};
-
-    texture =
-        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
-    if (texture == NULL) {
-      printf("Couldn't create texture: %s\n", SDL_GetError());
-      return 1;
-    }
-
-    int result = SDL_UpdateTexture(texture, &rect, pixels,
-                                   width * num_channels);  // load to video memory
-    if (result != 0) {
-      printf("Couldn't update texture: %s\n", SDL_GetError());
-      return 1;
-    }
-  }
-
-  Viewport viewport;
-  viewport.x = 0;
-  viewport.y = 0;
-  viewport.width = 30;
-
-  int tile_size = window_width / viewport.width;
-
-  viewport.height = (window_height / tile_size);
-  viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
-
-  viewport.player_area = create_rect(viewport.width / 3, viewport.height / 3,
-                                     viewport.width * 2 / 3, viewport.height * 2 / 3);
-
-  // Increase viewport size by one so that we can draw parts of tiles
-  viewport.width++;
-  viewport.height++;
-
-  v2 window_offset = {};
-  window_offset.x = (window_width % tile_size) / 2;  // to adjust tiles
-  window_offset.y = (window_height % tile_size) / 2;
-
-  DrawContext draw_context = {renderer, texture, window_offset, tile_size};
-
-  u64 start = time_now();
+StateId level_gameplay(GameState *state) {
+  Level *level = &state->level;
 
   bool rock_is_pushed = false;
+  u64 start = time_now();
   u64 rock_start_move_time = start;
-
-  // Init animations
-  Animation anim_diamond = {};
-  anim_diamond.start_time = start;
-  anim_diamond.num_frames = 8;
-  anim_diamond.fps = 15;
-  anim_diamond.start_frame = V2(0, 320);
-
-  Animation anim_enemy = {};
-  anim_enemy.start_time = start;
-  anim_enemy.num_frames = 8;
-  anim_enemy.fps = 15;
-  anim_enemy.start_frame = V2(0, 288);
-
-  Animation anim_enemy_exploded = {};
-  anim_enemy_exploded.start_time = start;
-  anim_enemy_exploded.num_frames = 4;
-  anim_enemy_exploded.fps = 15;
-  anim_enemy_exploded.start_frame = V2(32, 0);
-  anim_enemy_exploded.times_to_play = 1;
-
-  Animation anim_butterfly = {};
-  anim_butterfly.start_time = start;
-  anim_butterfly.num_frames = 8;
-  anim_butterfly.fps = 15;
-  anim_butterfly.start_frame = V2(0, 352);
-
-  Animation anim_butterfly_exploded = {};
-  anim_butterfly_exploded.start_time = start;
-  anim_butterfly_exploded.num_frames = 7;
-  anim_butterfly_exploded.fps = 15;
-  anim_butterfly_exploded.start_frame = V2(64, 224);
-  anim_butterfly_exploded.times_to_play = 1;
-
-  Animation anim_idle1 = {};
-  anim_idle1.start_time = start;
-  anim_idle1.num_frames = 8;
-  anim_idle1.fps = 15;
-  anim_idle1.start_frame = V2(0, 33);
-
-  Animation anim_go_left = {};
-  anim_go_left.start_time = start;
-  anim_go_left.num_frames = 8;
-  anim_go_left.fps = 25;
-  anim_go_left.start_frame = V2(0, 128);
-
-  Animation anim_go_right = {};
-  anim_go_right.start_time = start;
-  anim_go_right.num_frames = 8;
-  anim_go_right.fps = 25;
-  anim_go_right.start_frame = V2(0, 160);
-
-  Animation anim_idle2 = {};
-  anim_idle2.start_time = start;
-  anim_idle2.num_frames = 8;
-  anim_idle2.fps = 10;
-  anim_idle2.start_frame = V2(0, 66);
-
-  Animation anim_idle3 = {};
-  anim_idle3.start_time = start;
-  anim_idle3.num_frames = 8;
-  anim_idle3.fps = 10;
-  anim_idle3.start_frame = V2(0, 98);
-
-  Animation anim_exit = {};
-  anim_exit.start_time = start;
-  anim_exit.num_frames = 2;  // no exit annimation until all diamonds are collected
-  anim_exit.fps = 4;
-  anim_exit.start_frame = V2(32, 192);
-
-  // Init level
-  Level level = {};
-  int level_id = 3;
-  load_level(&level, level_id);
-
   u64 player_last_move_time = start;
+  int walking_sound_cooldown = 1;
   u64 drop_last_time = start;
-  u64 enemy_move_last_time = start;
+  u64 enemy_last_move_time = start;
   const double kPlayerDelay = 0.1;
   const double kDropDelay = 0.15;
   const double kEnemyMoveDelay = 0.15;
+
   Input input = {false, false, false, false};
 
-  Animation *player_animation = &anim_idle1;
-  Animation *previos_direction_anim = &anim_go_right;
+  AnimationId player_animation = ANIM_IDLE1;
+  AnimationId previos_direction_anim = ANIM_GO_RIGHT;
 
-  int score = 0;
-
-  play_sound(SOUND_BD1);
-  int walking_sound_cooldown = 1;
-
-  int is_running = 1;
-main_loop:
+  bool is_running = true;
+gameplay_loop:
   while (is_running) {
     bool white_tunnel = false;
     double frame_time = seconds_since(start);  // for animation
@@ -671,12 +569,12 @@ main_loop:
     SDL_Event event;
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
-        is_running = 0;
+        is_running = false;
         break;
       }
       if (event.type == SDL_KEYUP) {
         if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
-          is_running = 0;
+          is_running = false;
           break;
         }
       }
@@ -710,7 +608,7 @@ main_loop:
         }
         if (event.key.keysym.sym == 'r') {
           load_level(&level, level_id);
-          goto main_loop;
+          goto gameplay_loop;
         }
       }
     }
@@ -847,8 +745,8 @@ main_loop:
     }
 
     // Move enemy
-    if (seconds_since(enemy_move_last_time) > kEnemyMoveDelay) {
-      enemy_move_last_time = time_now();
+    if (seconds_since(enemy_last_move_time) > kEnemyMoveDelay) {
+      enemy_last_move_time = time_now();
 
       move_enemies(&level, 'f');
       move_enemies(&level, 'b');
@@ -1022,6 +920,125 @@ main_loop:
     //     gPerformanceFrequency; start = now; printf("MS %.3lf \n",
     //     elapsed_ms);
     // }
+  }
+}
+
+int main() {
+  if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO) < 0) {
+    return 1;
+  }
+  gPerformanceFrequency = (double)SDL_GetPerformanceFrequency();
+
+  // Audio
+  SDL_AudioDeviceID audio_device_id = init_audio();
+  if (audio_device_id == 0) {
+    printf("Couldn't init audio\n");
+    return 1;
+  }
+
+  SDL_Window *window =
+      SDL_CreateWindow("Boulder-Dash", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 960, 480,
+                       SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
+
+  if (window == NULL) {
+    printf("Couldn't create window: %s\n", SDL_GetError());
+    return 1;
+  }
+
+  int window_width, window_height;
+  SDL_GetWindowSize(window, &window_width, &window_height);
+
+  SDL_Renderer *renderer =
+      SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  if (renderer == NULL) {
+    printf("Couldn't create renderer: %s\n", SDL_GetError());
+    return 1;
+  }
+
+  // Load texture
+  SDL_Texture *texture;
+  {
+    int width, height, num_channels;
+    void *pixels = stbi_load("bd-sprites.png", &width, &height, &num_channels, 0);
+
+    SDL_Rect rect = {0, 0, width, height};
+
+    texture =
+        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
+    if (texture == NULL) {
+      printf("Couldn't create texture: %s\n", SDL_GetError());
+      return 1;
+    }
+
+    int result = SDL_UpdateTexture(texture, &rect, pixels,
+                                   width * num_channels);  // load to video memory
+    if (result != 0) {
+      printf("Couldn't update texture: %s\n", SDL_GetError());
+      return 1;
+    }
+  }
+
+  Viewport viewport;
+  viewport.x = 0;
+  viewport.y = 0;
+  viewport.width = 30;
+
+  int tile_size = window_width / viewport.width;
+
+  viewport.height = (window_height / tile_size);
+  viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
+
+  viewport.player_area = create_rect(viewport.width / 3, viewport.height / 3,
+                                     viewport.width * 2 / 3, viewport.height * 2 / 3);
+
+  // Increase viewport size by one so that we can draw parts of tiles
+  viewport.width++;
+  viewport.height++;
+
+  v2 window_offset = {};
+  window_offset.x = (window_width % tile_size) / 2;  // to adjust tiles
+  window_offset.y = (window_height % tile_size) / 2;
+
+  DrawContext draw_context = {renderer, texture, window_offset, tile_size};
+
+  // Init animations
+  u64 start = time_now();
+  gAnimations[ANIM_DIAMOND] = create_animation(start, 8, 15, V2(0, 320), 0);
+  gAnimations[ANIM_ENEMY] = create_animation(start, 8, 15, V2(0, 288), 0);
+  gAnimations[ANIM_EXPLODED] = create_animation(start, 4, 15, V2(32, 0), 1);
+  gAnimations[ANIM_BUTTERFLY] = create_animation(start, 8, 15, V2(0, 352), 0);
+  gAnimations[ANIM_BUTTERFLY_EXPLODED] = create_animation(start, 7, 15, V2(64, 224), 1);
+  gAnimations[ANIM_IDLE1] = create_animation(start, 8, 15, V2(0, 33), 0);
+  gAnimations[ANIM_GO_LEFT] = create_animation(start, 8, 25, V2(0, 128), 0);
+  gAnimations[ANIM_GO_RIGHT] = create_animation(start, 8, 25, V2(0, 160), 0);
+  gAnimations[ANIM_IDLE2] = create_animation(start, 8, 10, V2(0, 66), 0);
+  gAnimations[ANIM_IDLE3] = create_animation(start, 8, 10, V2(0, 98), 0);
+  gAnimations[ANIM_EXIT] = create_animation(start, 2, 4, V2(32, 192), 0);
+
+  // Persistent game state
+  GameState state = {};
+  state.score = 0;
+  state.level_id = 0;
+  state.draw_context = draw_context;
+  state.viewport = viewport;
+
+  // todo move to starting
+  load_level(&state.level, state.level_id);
+
+  StateId next_state = LEVEL_STARTING;
+  bool is_running = true;
+  while (is_running) {
+    switch (next_state) {
+      case LEVEL_STARTING: {
+        next_state = level_starting();
+      } break;
+      case LEVEL_GAMEPLAY: {
+        next_state = level_gameplay();
+      } break;
+      case QUIT_GAME: {
+        is_running = false;
+      } break;
+    }
   }
 
   SDL_CloseAudioDevice(audio_device_id);
