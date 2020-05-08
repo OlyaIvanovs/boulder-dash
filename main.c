@@ -20,6 +20,7 @@ typedef enum StateId {
   LEVEL_ENDING,
   PLAYER_DYING,
   YOU_WIN,
+  QUIT_GAME,
 } StateId;
 
 typedef enum {
@@ -150,7 +151,7 @@ typedef enum AnimationId {
   ANIM_EXIT,
 
   ANIM_COUNT,
-}
+} AnimationId;
 
 typedef struct GameState {
   Level level;
@@ -224,14 +225,20 @@ void load_level(Level *level, int num_level) {
   level->can_exit = false;
 }
 
-v2 get_frame(Animation *animation) {
-  int frames_played_since_start = (int)(seconds_since(animation->start_time) * animation->fps);
+v2 get_frame_from(u64 start_time, AnimationId anim_id) {
+  Animation *animation = &gAnimations[anim_id];
+  int frames_played_since_start = (int)(seconds_since(start_time) * animation->fps);
   int frame_index = frames_played_since_start % animation->num_frames;
   if (animation->times_to_play > 0 &&
       frames_played_since_start / animation->num_frames > animation->times_to_play) {
     frame_index = animation->num_frames - 1;
   }
   return V2(animation->start_frame.x + frame_index * 32, animation->start_frame.y);
+}
+
+v2 get_frame(AnimationId anim_id) {
+  Animation *animation = &gAnimations[anim_id];
+  return get_frame_from(animation->start_time, anim_id);
 }
 
 v2 turn_right(v2 direction) {
@@ -497,18 +504,18 @@ void drop_objects(Level *level, char obj_sym) {
   }
 }
 
-void draw_tile_px(DrawContext context, v2 src, v2 dst) {
+void draw_tile_px(DrawContext *context, v2 src, v2 dst) {
   SDL_Rect src_rect = {src.x, src.y, 32, 32};
-  SDL_Rect dst_rect = {context.window_offset.x + dst.x, context.window_offset.y + dst.y,
-                       context.tile_size, context.tile_size};
-  SDL_RenderCopy(context.renderer, context.texture, &src_rect, &dst_rect);
+  SDL_Rect dst_rect = {context->window_offset.x + dst.x, context->window_offset.y + dst.y,
+                       context->tile_size, context->tile_size};
+  SDL_RenderCopy(context->renderer, context->texture, &src_rect, &dst_rect);
 }
 
-void draw_tile(DrawContext context, v2 src, v2 dst) {
-  draw_tile_px(context, src, V2(dst.x * context.tile_size, dst.y * context.tile_size));
+void draw_tile(DrawContext *context, v2 src, v2 dst) {
+  draw_tile_px(context, src, V2(dst.x * context->tile_size, dst.y * context->tile_size));
 }
 
-void draw_number(DrawContext context, int num, v2 pos, Color color, int min_digits) {
+void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_digits) {
   int digits[15] = {};
   int num_digits = 0;
   while (num > 0) {
@@ -542,7 +549,12 @@ Animation create_animation(u64 start_time, int num_frames, int fps, v2 start_fra
 }
 
 StateId level_gameplay(GameState *state) {
+  StateId next_state = QUIT_GAME;
+
   Level *level = &state->level;
+  Viewport *viewport = &state->viewport;
+  DrawContext *draw_context = &state->draw_context;
+  int tile_size = state->draw_context.tile_size;
 
   bool rock_is_pushed = false;
   u64 start = time_now();
@@ -570,11 +582,13 @@ gameplay_loop:
     while (SDL_PollEvent(&event)) {
       if (event.type == SDL_QUIT) {
         is_running = false;
+        next_state = QUIT_GAME;
         break;
       }
       if (event.type == SDL_KEYUP) {
         if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
           is_running = false;
+          next_state = QUIT_GAME;
           break;
         }
       }
@@ -607,7 +621,7 @@ gameplay_loop:
           input.down = false;
         }
         if (event.key.keysym.sym == 'r') {
-          load_level(&level, level_id);
+          load_level(level, state->level_id);
           goto gameplay_loop;
         }
       }
@@ -615,7 +629,7 @@ gameplay_loop:
 
     // Move player
     if (seconds_since(player_last_move_time) > kPlayerDelay) {
-      v2 next_player_pos = level.player_pos;
+      v2 next_player_pos = level->player_pos;
 
       if (input.right) {
         next_player_pos.x += 1;
@@ -626,16 +640,16 @@ gameplay_loop:
       } else if (input.down) {
         next_player_pos.y += 1;
       }
-      char next_tile = level.tiles[next_player_pos.y][next_player_pos.x];
-      if (can_move(&level, next_player_pos)) {
+      char next_tile = level->tiles[next_player_pos.y][next_player_pos.x];
+      if (can_move(level, next_player_pos)) {
         if (next_tile == 'd') {
-          remove_obj(&level.diamonds, next_player_pos);
-          level.diamonds_collected += 1;
-          score += level.score_per_diamond;
-          if (level.diamonds_collected == level.min_diamonds) {
-            level.score_per_diamond = 20;
+          remove_obj(&level->diamonds, next_player_pos);
+          level->diamonds_collected += 1;
+          state->score += level->score_per_diamond;
+          if (level->diamonds_collected == level->min_diamonds) {
+            level->score_per_diamond = 20;
             white_tunnel = true;
-            level.can_exit = true;
+            level->can_exit = true;
             play_sound(SOUND_CRACK);
           } else {
             play_sound(SOUND_DIAMOND_COLLECT);
@@ -644,7 +658,7 @@ gameplay_loop:
 
         if (next_tile == 'X') {
           play_sound(SOUND_FINISHED);
-          load_level(&level, ++level_id);
+          load_level(level, ++state->level_id);
           continue;
         }
 
@@ -657,41 +671,41 @@ gameplay_loop:
           walking_sound_cooldown = 1;
         }
 
-        level.tiles[level.player_pos.y][level.player_pos.x] = '_';
-        level.tiles[next_player_pos.y][next_player_pos.x] = 'E';
-        level.player_pos = next_player_pos;
+        level->tiles[level->player_pos.y][level->player_pos.x] = '_';
+        level->tiles[next_player_pos.y][next_player_pos.x] = 'E';
+        level->player_pos = next_player_pos;
         player_last_move_time = time_now();
       }
 
       // Push rock
-      if (next_tile == 'r' && can_move_rock(&level, level.player_pos, next_player_pos)) {
+      if (next_tile == 'r' && can_move_rock(level, level->player_pos, next_player_pos)) {
         if (!rock_is_pushed) {
           rock_start_move_time = time_now();
           rock_is_pushed = true;
         } else if (seconds_since(rock_start_move_time) > 0.5f) {
           int rock_next_x;
-          if (level.player_pos.x < next_player_pos.x) {
+          if (level->player_pos.x < next_player_pos.x) {
             rock_next_x = next_player_pos.x + 1;
           } else {
             rock_next_x = next_player_pos.x - 1;
           }
 
-          level.tiles[level.player_pos.y][level.player_pos.x] = '_';
-          level.tiles[next_player_pos.y][next_player_pos.x] = 'E';
+          level->tiles[level->player_pos.y][level->player_pos.x] = '_';
+          level->tiles[next_player_pos.y][next_player_pos.x] = 'E';
 
-          for (int i = 0; i < level.rocks.num; i++) {
-            if (level.rocks.objects[i].x == next_player_pos.x &&
-                level.rocks.objects[i].y == next_player_pos.y) {
-              level.rocks.objects[i].x = rock_next_x;
-              level.tiles[next_player_pos.y][rock_next_x] = 'r';
+          for (int i = 0; i < level->rocks.num; i++) {
+            if (level->rocks.objects[i].x == next_player_pos.x &&
+                level->rocks.objects[i].y == next_player_pos.y) {
+              level->rocks.objects[i].x = rock_next_x;
+              level->tiles[next_player_pos.y][rock_next_x] = 'r';
               break;
             }
           }
-          level.player_pos = next_player_pos;
+          level->player_pos = next_player_pos;
         }
       }
 
-      if (level.player_pos.x == next_player_pos.x) {
+      if (level->player_pos.x == next_player_pos.x) {
         rock_start_move_time = time_now();
         rock_is_pushed = false;
       }
@@ -699,48 +713,48 @@ gameplay_loop:
 
     // Move viewport
     {
-      v2 viewport_pos = {viewport.x / tile_size, viewport.y / tile_size};
+      v2 viewport_pos = {viewport->x / tile_size, viewport->y / tile_size};
       v2 target_pos = viewport_pos;
 
-      int rel_player_x = level.player_pos.x - viewport_pos.x;
-      if (rel_player_x >= viewport.player_area.right) {
-        target_pos.x += rel_player_x - viewport.player_area.right;
-        if (target_pos.x > viewport.max.x) {
-          target_pos.x = viewport.max.x;
+      int rel_player_x = level->player_pos.x - viewport_pos.x;
+      if (rel_player_x >= viewport->player_area.right) {
+        target_pos.x += rel_player_x - viewport->player_area.right;
+        if (target_pos.x > viewport->max.x) {
+          target_pos.x = viewport->max.x;
         }
       }
-      if (rel_player_x <= viewport.player_area.left) {
-        target_pos.x -= viewport.player_area.left - rel_player_x;
+      if (rel_player_x <= viewport->player_area.left) {
+        target_pos.x -= viewport->player_area.left - rel_player_x;
         if (target_pos.x < 0) {
           target_pos.x = 0;
         }
       }
 
-      int rel_player_y = level.player_pos.y - viewport_pos.y;
-      if (rel_player_y >= viewport.player_area.bottom) {
-        target_pos.y += rel_player_y - viewport.player_area.bottom;
-        if (target_pos.y > viewport.max.y) {
-          target_pos.y = viewport.max.y;
+      int rel_player_y = level->player_pos.y - viewport_pos.y;
+      if (rel_player_y >= viewport->player_area.bottom) {
+        target_pos.y += rel_player_y - viewport->player_area.bottom;
+        if (target_pos.y > viewport->max.y) {
+          target_pos.y = viewport->max.y;
         }
       }
-      if (rel_player_y <= viewport.player_area.top) {
-        target_pos.y -= viewport.player_area.top - rel_player_y;
+      if (rel_player_y <= viewport->player_area.top) {
+        target_pos.y -= viewport->player_area.top - rel_player_y;
         if (target_pos.y < 0) {
           target_pos.y = 0;
         }
       }
 
-      if (viewport.x < target_pos.x * tile_size) {
-        viewport.x += tile_size;
+      if (viewport->x < target_pos.x * tile_size) {
+        viewport->x += tile_size;
       }
-      if (viewport.x > target_pos.x * tile_size) {
-        viewport.x -= tile_size;
+      if (viewport->x > target_pos.x * tile_size) {
+        viewport->x -= tile_size;
       }
-      if (viewport.y < target_pos.y * tile_size) {
-        viewport.y += tile_size;
+      if (viewport->y < target_pos.y * tile_size) {
+        viewport->y += tile_size;
       }
-      if (viewport.y > target_pos.y * tile_size) {
-        viewport.y -= tile_size;
+      if (viewport->y > target_pos.y * tile_size) {
+        viewport->y -= tile_size;
       }
     }
 
@@ -748,24 +762,24 @@ gameplay_loop:
     if (seconds_since(enemy_last_move_time) > kEnemyMoveDelay) {
       enemy_last_move_time = time_now();
 
-      move_enemies(&level, 'f');
-      move_enemies(&level, 'b');
+      move_enemies(level, 'f');
+      move_enemies(level, 'b');
     }
 
     // Drop rocks and diamonds
     if (seconds_since(drop_last_time) > kDropDelay) {
       drop_last_time = time_now();
-      drop_objects(&level, 'r');
-      drop_objects(&level, 'd');
+      drop_objects(level, 'r');
+      drop_objects(level, 'd');
 
       // Clear locks
-      for (int i = 0; i < COUNT(level.locks); i++) {
-        Lock *lock = &level.locks[i];
+      for (int i = 0; i < COUNT(level->locks); i++) {
+        Lock *lock = &level->locks[i];
         if (lock->lifetime > 0) {
           lock->lifetime--;
           if (lock->lifetime == 0) {
-            if (level.tiles[lock->pos.y][lock->pos.x] == 'l') {
-              level.tiles[lock->pos.y][lock->pos.x] = '_';
+            if (level->tiles[lock->pos.y][lock->pos.x] == 'l') {
+              level->tiles[lock->pos.y][lock->pos.x] = '_';
             }
           }
         }
@@ -773,8 +787,8 @@ gameplay_loop:
     }
 
     // Process active explosions
-    for (int i = 0; i < COUNT(level.explosions); ++i) {
-      Explosion *e = &level.explosions[i];
+    for (int i = 0; i < COUNT(level->explosions); ++i) {
+      Explosion *e = &level->explosions[i];
       if (!e->active) continue;
 
       if (seconds_since(e->start_time) > e->duration) {
@@ -782,13 +796,13 @@ gameplay_loop:
         for (int y = e->area.top; y <= e->area.bottom; ++y) {
           for (int x = e->area.left; x <= e->area.right; ++x) {
             if (e->type == 'f') {
-              level.tiles[y][x] = '_';
+              level->tiles[y][x] = '_';
             } else if (e->type == 'b') {
-              level.tiles[y][x] = 'd';
+              level->tiles[y][x] = 'd';
 
               // Add new diamond to level
-              level.diamonds.objects[level.diamonds.num++] = V2(x, y);
-              assert(level.diamonds.num < COUNT(level.diamonds.objects));
+              level->diamonds.objects[level->diamonds.num++] = V2(x, y);
+              assert(level->diamonds.num < COUNT(level->diamonds.objects));
             }
           }
         }
@@ -796,31 +810,30 @@ gameplay_loop:
     }
 
     // Choose player animation
-
     if (seconds_since(player_last_move_time) > 5) {
       if (seconds_since(player_last_move_time) > 10) {
-        player_animation = &anim_idle3;
+        player_animation = ANIM_IDLE3;
       } else {
-        player_animation = &anim_idle2;
+        player_animation = ANIM_IDLE2;
       }
     } else if (input.right) {
-      player_animation = &anim_go_right;
-      previos_direction_anim = &anim_go_right;
+      player_animation = ANIM_GO_RIGHT;
+      previos_direction_anim = ANIM_GO_RIGHT;
     } else if (input.left) {
-      player_animation = &anim_go_left;
-      previos_direction_anim = &anim_go_left;
+      player_animation = ANIM_GO_LEFT;
+      previos_direction_anim = ANIM_GO_LEFT;
     } else if (input.up || input.down) {
       player_animation = previos_direction_anim;
     } else {
-      player_animation = &anim_idle1;
+      player_animation = ANIM_IDLE1;
     }
 
     // Draw level
-    for (int y = 0; y < viewport.height; y++) {
-      for (int x = 0; x < viewport.width; x++) {
+    for (int y = 0; y < viewport->height; y++) {
+      for (int x = 0; x < viewport->width; x++) {
         v2 src = {0, 192};
-        v2 dst = {x * tile_size - viewport.x % tile_size, y * tile_size - viewport.y % tile_size};
-        char tile_type = level.tiles[viewport.y / tile_size + y][viewport.x / tile_size + x];
+        v2 dst = {x * tile_size - viewport->x % tile_size, y * tile_size - viewport->y % tile_size};
+        char tile_type = level->tiles[viewport->y / tile_size + y][viewport->x / tile_size + x];
         if (tile_type == '*') {
           continue;  // ignore tile completely
         }
@@ -839,14 +852,14 @@ gameplay_loop:
         } else if (tile_type == 'E') {
           src = get_frame(player_animation);
         } else if (tile_type == 'd') {
-          src = get_frame(&anim_diamond);
+          src = get_frame(ANIM_DIAMOND);
         } else if (tile_type == 'f') {
-          src = get_frame(&anim_enemy);
+          src = get_frame(ANIM_ENEMY);
         } else if (tile_type == 'b') {
-          src = get_frame(&anim_butterfly);
+          src = get_frame(ANIM_BUTTERFLY);
         } else if (tile_type == 'X') {
-          if (level.can_exit) {
-            src = get_frame(&anim_exit);
+          if (level->can_exit) {
+            src = get_frame(ANIM_EXIT);
           } else {
             src = V2(32, 192);
           }
@@ -856,30 +869,29 @@ gameplay_loop:
     }
 
     // Draw explosions
-    for (int i = 0; i < COUNT(level.explosions); ++i) {
-      Explosion *e = &level.explosions[i];
+    for (int i = 0; i < COUNT(level->explosions); ++i) {
+      Explosion *e = &level->explosions[i];
       if (!e->active) continue;
 
-      Animation *anim;
+      AnimationId anim;
       if (e->type == 'f') {
-        anim = &anim_enemy_exploded;
+        anim = ANIM_ENEMY_EXPLODED;
       } else if (e->type == 'b') {
-        anim = &anim_butterfly_exploded;
+        anim = ANIM_BUTTERFLY_EXPLODED;
       }
-      anim->start_time = e->start_time;
 
-      v2 src = get_frame(anim);
+      v2 src = get_frame_from(e->start_time, anim);
       for (int y = e->area.top; y <= e->area.bottom; ++y) {
         for (int x = e->area.left; x <= e->area.right; ++x) {
           draw_tile_px(draw_context, src,
-                       V2(x * tile_size - viewport.x, y * tile_size - viewport.y));
+                       V2(x * tile_size - viewport->x, y * tile_size - viewport->y));
         }
       }
     }
 
     // Draw status
     // Draw status bar's background black
-    for (int x = 0; x < (viewport.width - 1); x++) {
+    for (int x = 0; x < (viewport->width - 1); x++) {
       draw_tile(draw_context, V2(128, 0), V2(x, 0));
     }
 
@@ -887,32 +899,32 @@ gameplay_loop:
     v2 white_diamond = {256, 32};
     draw_tile(draw_context, white_diamond, V2(2, 0));
 
-    if (level.diamonds_collected < level.min_diamonds) {
-      draw_number(draw_context, level.min_diamonds, V2(0, 0), COLOR_YELLOW, 2);
+    if (level->diamonds_collected < level->min_diamonds) {
+      draw_number(draw_context, level->min_diamonds, V2(0, 0), COLOR_YELLOW, 2);
     } else {
       draw_tile(draw_context, white_diamond, V2(0, 0));
       draw_tile(draw_context, white_diamond, V2(1, 0));
     }
-    draw_number(draw_context, level.score_per_diamond, V2(3, 0), COLOR_WHITE, 2);
+    draw_number(draw_context, level->score_per_diamond, V2(3, 0), COLOR_WHITE, 2);
 
     // Display number of collected diamonds
     v2 pos_diamonds = {10, 0};
-    draw_number(draw_context, level.diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
+    draw_number(draw_context, level->diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
 
     // Display overall score
-    v2 pos_score = {viewport.width - 7, 0};
-    draw_number(draw_context, score, pos_score, COLOR_WHITE, 6);
+    v2 pos_score = {viewport->width - 7, 0};
+    draw_number(draw_context, state->score, pos_score, COLOR_WHITE, 6);
 
     // Display time
-    v2 pos_time = {viewport.width / 2, 0};
-    int time_to_show = level.time_left - (int)(seconds_since(start));
+    v2 pos_time = {viewport->width / 2, 0};
+    int time_to_show = level->time_left - (int)(seconds_since(start));
     if (time_to_show < 0) {
       time_to_show = 0;
     }
     draw_number(draw_context, time_to_show, pos_time, COLOR_WHITE, 3);
 
-    SDL_RenderPresent(renderer);
-    SDL_RenderClear(renderer);
+    SDL_RenderPresent(draw_context->renderer);
+    SDL_RenderClear(draw_context->renderer);
 
     // {
     //     u64 now = time_now();
@@ -921,6 +933,8 @@ gameplay_loop:
     //     elapsed_ms);
     // }
   }
+
+  return next_state;
 }
 
 int main() {
@@ -1005,7 +1019,7 @@ int main() {
   u64 start = time_now();
   gAnimations[ANIM_DIAMOND] = create_animation(start, 8, 15, V2(0, 320), 0);
   gAnimations[ANIM_ENEMY] = create_animation(start, 8, 15, V2(0, 288), 0);
-  gAnimations[ANIM_EXPLODED] = create_animation(start, 4, 15, V2(32, 0), 1);
+  gAnimations[ANIM_ENEMY_EXPLODED] = create_animation(start, 4, 15, V2(32, 0), 1);
   gAnimations[ANIM_BUTTERFLY] = create_animation(start, 8, 15, V2(0, 352), 0);
   gAnimations[ANIM_BUTTERFLY_EXPLODED] = create_animation(start, 7, 15, V2(64, 224), 1);
   gAnimations[ANIM_IDLE1] = create_animation(start, 8, 15, V2(0, 33), 0);
@@ -1025,15 +1039,15 @@ int main() {
   // todo move to starting
   load_level(&state.level, state.level_id);
 
-  StateId next_state = LEVEL_STARTING;
+  StateId next_state = LEVEL_GAMEPLAY;
   bool is_running = true;
   while (is_running) {
     switch (next_state) {
       case LEVEL_STARTING: {
-        next_state = level_starting();
+        // next_state = level_starting();
       } break;
       case LEVEL_GAMEPLAY: {
-        next_state = level_gameplay();
+        next_state = level_gameplay(&state);
       } break;
       case QUIT_GAME: {
         is_running = false;
