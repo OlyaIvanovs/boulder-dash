@@ -5,9 +5,8 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "base.h"
-
 #include "audio.h"
+#include "base.h"
 #include "levels.h"
 #include "lib/stb_image.h"
 
@@ -548,6 +547,66 @@ Animation create_animation(u64 start_time, int num_frames, int fps, v2 start_fra
   return animation;
 }
 
+void update_screen(DrawContext *draw_context) {
+  SDL_RenderPresent(draw_context->renderer);
+  SDL_RenderClear(draw_context->renderer);
+}
+
+void draw_level(Level *level, DrawContext *draw_context, Viewport *viewport) {
+  int tile_size = draw_context->tile_size;
+
+  for (int y = 0; y < viewport->height; y++) {
+    for (int x = 0; x < viewport->width; x++) {
+      v2 src = {0, 192};
+      v2 dst = {x * tile_size - viewport->x % tile_size, y * tile_size - viewport->y % tile_size};
+      char tile_type = level->tiles[viewport->y / tile_size + y][viewport->x / tile_size + x];
+      if (tile_type == '*') {
+        continue;  // ignore tile completely
+      }
+      if (tile_type == 'r') {
+        src = V2(0, 224);
+      } else if (tile_type == 'w') {
+        src = V2(96, 192);
+      } else if (tile_type == 'W') {
+        src = V2(32, 192);
+      } else if (tile_type == '.') {
+        src = V2(32, 224);
+      } else if (tile_type == 'E') {
+        src = get_frame(ANIM_EXIT);
+      } else if (tile_type == 'd') {
+        src = get_frame(ANIM_DIAMOND);
+      } else if (tile_type == 'f') {
+        src = get_frame(ANIM_ENEMY);
+      } else if (tile_type == 'b') {
+        src = get_frame(ANIM_BUTTERFLY);
+      } else if (tile_type == 'X') {
+        if (level->can_exit) {
+          src = get_frame(ANIM_EXIT);
+        } else {
+          src = V2(32, 192);
+        }
+      }
+      draw_tile_px(draw_context, src, dst);
+    }
+  }
+}
+
+StateId level_starting(GameState *state) {
+  Viewport *viewport = &state->viewport;
+  Level *level = &state->level;
+  DrawContext *draw_context = &state->draw_context;
+
+  play_sound(SOUND_COVER);
+
+  u64 start = time_now();
+  while (seconds_since(start) <= 1.0) {
+    draw_level(level, draw_context, viewport);
+    update_screen(draw_context);
+  }
+
+  return LEVEL_GAMEPLAY;
+}
+
 StateId level_gameplay(GameState *state) {
   StateId next_state = QUIT_GAME;
 
@@ -952,7 +1011,7 @@ int main() {
 
   SDL_Window *window =
       SDL_CreateWindow("Boulder-Dash", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 960, 480,
-                       SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
+                       SDL_WINDOW_OPENGL);  // | SDL_WINDOW_FULLSCREEN_DESKTOP);
 
   if (window == NULL) {
     printf("Couldn't create window: %s\n", SDL_GetError());
@@ -1039,12 +1098,12 @@ int main() {
   // todo move to starting
   load_level(&state.level, state.level_id);
 
-  StateId next_state = LEVEL_GAMEPLAY;
+  StateId next_state = LEVEL_STARTING;
   bool is_running = true;
   while (is_running) {
     switch (next_state) {
       case LEVEL_STARTING: {
-        // next_state = level_starting();
+        next_state = level_starting(&state);
       } break;
       case LEVEL_GAMEPLAY: {
         next_state = level_gameplay(&state);
@@ -1052,6 +1111,8 @@ int main() {
       case QUIT_GAME: {
         is_running = false;
       } break;
+      default:
+        break;
     }
   }
 
