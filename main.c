@@ -552,6 +552,54 @@ void update_screen(DrawContext *draw_context) {
   SDL_RenderClear(draw_context->renderer);
 }
 
+void move_viewport(Level *level, Viewport *viewport, DrawContext *draw_context, double step) {
+  int tile_size = draw_context->tile_size;
+
+  v2 viewport_pos = {viewport->x / tile_size, viewport->y / tile_size};
+  v2 target_pos = viewport_pos;
+
+  int rel_player_x = level->player_pos.x - viewport_pos.x;
+  if (rel_player_x >= viewport->player_area.right) {
+    target_pos.x += rel_player_x - viewport->player_area.right;
+    if (target_pos.x > viewport->max.x) {
+      target_pos.x = viewport->max.x;
+    }
+  }
+  if (rel_player_x <= viewport->player_area.left) {
+    target_pos.x -= viewport->player_area.left - rel_player_x;
+    if (target_pos.x < 0) {
+      target_pos.x = 0;
+    }
+  }
+
+  int rel_player_y = level->player_pos.y - viewport_pos.y;
+  if (rel_player_y >= viewport->player_area.bottom) {
+    target_pos.y += rel_player_y - viewport->player_area.bottom;
+    if (target_pos.y > viewport->max.y) {
+      target_pos.y = viewport->max.y;
+    }
+  }
+  if (rel_player_y <= viewport->player_area.top) {
+    target_pos.y -= viewport->player_area.top - rel_player_y;
+    if (target_pos.y < 0) {
+      target_pos.y = 0;
+    }
+  }
+
+  if (viewport->x < target_pos.x * tile_size) {
+    viewport->x += tile_size * step;
+  }
+  if (viewport->x > target_pos.x * tile_size) {
+    viewport->x -= tile_size * step;
+  }
+  if (viewport->y < target_pos.y * tile_size) {
+    viewport->y += tile_size * step;
+  }
+  if (viewport->y > target_pos.y * tile_size) {
+    viewport->y -= tile_size * step;
+  }
+}
+
 void draw_level(Level *level, DrawContext *draw_context, Viewport *viewport) {
   int tile_size = draw_context->tile_size;
 
@@ -597,13 +645,15 @@ StateId level_starting(GameState *state) {
   DrawContext *draw_context = &state->draw_context;
 
   play_sound(SOUND_COVER);
+  load_level(level, state->level_id);
 
   u64 start = time_now();
   while (seconds_since(start) <= 1.0) {
     draw_level(level, draw_context, viewport);
+    // Move viewport with step = 0.15 tile
+    move_viewport(level, viewport, draw_context, 0.15);
     update_screen(draw_context);
   }
-
   return LEVEL_GAMEPLAY;
 }
 
@@ -731,7 +781,7 @@ gameplay_loop:
         }
 
         level->tiles[level->player_pos.y][level->player_pos.x] = '_';
-        level->tiles[next_player_pos.y][next_player_pos.x] = 'E';
+        level->tiles[next_player_pos.y][next_player_pos.x] = 'p';
         level->player_pos = next_player_pos;
         player_last_move_time = time_now();
       }
@@ -750,7 +800,7 @@ gameplay_loop:
           }
 
           level->tiles[level->player_pos.y][level->player_pos.x] = '_';
-          level->tiles[next_player_pos.y][next_player_pos.x] = 'E';
+          level->tiles[next_player_pos.y][next_player_pos.x] = 'p';
 
           for (int i = 0; i < level->rocks.num; i++) {
             if (level->rocks.objects[i].x == next_player_pos.x &&
@@ -770,52 +820,8 @@ gameplay_loop:
       }
     }
 
-    // Move viewport
-    {
-      v2 viewport_pos = {viewport->x / tile_size, viewport->y / tile_size};
-      v2 target_pos = viewport_pos;
-
-      int rel_player_x = level->player_pos.x - viewport_pos.x;
-      if (rel_player_x >= viewport->player_area.right) {
-        target_pos.x += rel_player_x - viewport->player_area.right;
-        if (target_pos.x > viewport->max.x) {
-          target_pos.x = viewport->max.x;
-        }
-      }
-      if (rel_player_x <= viewport->player_area.left) {
-        target_pos.x -= viewport->player_area.left - rel_player_x;
-        if (target_pos.x < 0) {
-          target_pos.x = 0;
-        }
-      }
-
-      int rel_player_y = level->player_pos.y - viewport_pos.y;
-      if (rel_player_y >= viewport->player_area.bottom) {
-        target_pos.y += rel_player_y - viewport->player_area.bottom;
-        if (target_pos.y > viewport->max.y) {
-          target_pos.y = viewport->max.y;
-        }
-      }
-      if (rel_player_y <= viewport->player_area.top) {
-        target_pos.y -= viewport->player_area.top - rel_player_y;
-        if (target_pos.y < 0) {
-          target_pos.y = 0;
-        }
-      }
-
-      if (viewport->x < target_pos.x * tile_size) {
-        viewport->x += tile_size;
-      }
-      if (viewport->x > target_pos.x * tile_size) {
-        viewport->x -= tile_size;
-      }
-      if (viewport->y < target_pos.y * tile_size) {
-        viewport->y += tile_size;
-      }
-      if (viewport->y > target_pos.y * tile_size) {
-        viewport->y -= tile_size;
-      }
-    }
+    // Move viewport with step = 1 tile
+    move_viewport(level, viewport, draw_context, 1.0);
 
     // Move enemy
     if (seconds_since(enemy_last_move_time) > kEnemyMoveDelay) {
@@ -888,42 +894,22 @@ gameplay_loop:
     }
 
     // Draw level
-    for (int y = 0; y < viewport->height; y++) {
-      for (int x = 0; x < viewport->width; x++) {
-        v2 src = {0, 192};
-        v2 dst = {x * tile_size - viewport->x % tile_size, y * tile_size - viewport->y % tile_size};
-        char tile_type = level->tiles[viewport->y / tile_size + y][viewport->x / tile_size + x];
-        if (tile_type == '*') {
-          continue;  // ignore tile completely
-        }
-        if (tile_type == 'r') {
-          src = V2(0, 224);
-        } else if (tile_type == 'w') {
-          src = V2(96, 192);
-        } else if (tile_type == 'W') {
-          src = V2(32, 192);
-        } else if (tile_type == '.') {
-          src = V2(32, 224);
-          // } else if (tile_type == 'l') {
-          //   src = V2(288, 0);
-        } else if (tile_type == '_' && white_tunnel) {
-          src = V2(300, 0);
-        } else if (tile_type == 'E') {
-          src = get_frame(player_animation);
-        } else if (tile_type == 'd') {
-          src = get_frame(ANIM_DIAMOND);
-        } else if (tile_type == 'f') {
-          src = get_frame(ANIM_ENEMY);
-        } else if (tile_type == 'b') {
-          src = get_frame(ANIM_BUTTERFLY);
-        } else if (tile_type == 'X') {
-          if (level->can_exit) {
-            src = get_frame(ANIM_EXIT);
-          } else {
-            src = V2(32, 192);
+    draw_level(level, draw_context, viewport);
+
+    // Draw player
+    draw_tile(draw_context, get_frame(player_animation),
+              V2(level->player_pos.x - viewport->x / tile_size,
+                 level->player_pos.y - viewport->y / tile_size));
+
+    // Draw white tunnel
+    if (white_tunnel) {
+      for (int y = 0; y < viewport->height; y++) {
+        for (int x = 0; x < viewport->width; x++) {
+          char tile_type = level->tiles[viewport->y / tile_size + y][viewport->x / tile_size + x];
+          if (tile_type == '_') {
+            draw_tile(draw_context, V2(300, 0), V2(x, y));
           }
         }
-        draw_tile_px(draw_context, src, dst);
       }
     }
 
@@ -1011,7 +997,7 @@ int main() {
 
   SDL_Window *window =
       SDL_CreateWindow("Boulder-Dash", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 960, 480,
-                       SDL_WINDOW_OPENGL);  // | SDL_WINDOW_FULLSCREEN_DESKTOP);
+                       SDL_WINDOW_OPENGL | SDL_WINDOW_FULLSCREEN_DESKTOP);
 
   if (window == NULL) {
     printf("Couldn't create window: %s\n", SDL_GetError());
@@ -1052,14 +1038,16 @@ int main() {
   }
 
   Viewport viewport;
-  viewport.x = 0;
-  viewport.y = 0;
   viewport.width = 30;
 
   int tile_size = window_width / viewport.width;
 
   viewport.height = (window_height / tile_size);
   viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
+
+  // Place viewport not at (0, 0) so it moves nicely on level 0 startup.
+  viewport.x = viewport.max.x * tile_size;
+  viewport.y = viewport.max.y * tile_size;
 
   viewport.player_area = create_rect(viewport.width / 3, viewport.height / 3,
                                      viewport.width * 2 / 3, viewport.height * 2 / 3);
@@ -1094,9 +1082,6 @@ int main() {
   state.level_id = 0;
   state.draw_context = draw_context;
   state.viewport = viewport;
-
-  // todo move to starting
-  load_level(&state.level, state.level_id);
 
   StateId next_state = LEVEL_STARTING;
   bool is_running = true;

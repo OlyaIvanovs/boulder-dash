@@ -30,3 +30,7 @@
 *.exe
 *.out
 *.app
+
+.clangd
+compile_commands.json
+*.sublime-workspace
