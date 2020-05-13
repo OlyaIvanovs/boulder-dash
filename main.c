@@ -102,7 +102,6 @@ typedef struct {
   SDL_Renderer *renderer;
   SDL_Texture *texture;
   v2 window_offset;
-  int tile_size;
 } DrawContext;
 
 typedef struct Level {
@@ -163,6 +162,7 @@ typedef struct GameState {
 // ======================================= Globals =================================================
 
 Animation gAnimations[ANIM_COUNT];
+const int kTileSize = 64;
 
 // ======================================= Functions ===============================================
 
@@ -506,12 +506,12 @@ void drop_objects(Level *level, char obj_sym) {
 void draw_tile_px(DrawContext *context, v2 src, v2 dst) {
   SDL_Rect src_rect = {src.x, src.y, 32, 32};
   SDL_Rect dst_rect = {context->window_offset.x + dst.x, context->window_offset.y + dst.y,
-                       context->tile_size, context->tile_size};
+                       kTileSize, kTileSize};
   SDL_RenderCopy(context->renderer, context->texture, &src_rect, &dst_rect);
 }
 
 void draw_tile(DrawContext *context, v2 src, v2 dst) {
-  draw_tile_px(context, src, V2(dst.x * context->tile_size, dst.y * context->tile_size));
+  draw_tile_px(context, src, V2(dst.x * kTileSize, dst.y * kTileSize));
 }
 
 void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_digits) {
@@ -552,10 +552,8 @@ void update_screen(DrawContext *draw_context) {
   SDL_RenderClear(draw_context->renderer);
 }
 
-void move_viewport(Level *level, Viewport *viewport, DrawContext *draw_context, double step) {
-  int tile_size = draw_context->tile_size;
-
-  v2 viewport_pos = {viewport->x / tile_size, viewport->y / tile_size};
+void move_viewport(Level *level, Viewport *viewport, int step) {
+  v2 viewport_pos = {viewport->x / kTileSize, viewport->y / kTileSize};
   v2 target_pos = viewport_pos;
 
   int rel_player_x = level->player_pos.x - viewport_pos.x;
@@ -586,28 +584,26 @@ void move_viewport(Level *level, Viewport *viewport, DrawContext *draw_context, 
     }
   }
 
-  if (viewport->x < target_pos.x * tile_size) {
-    viewport->x += tile_size * step;
+  if (viewport->x < target_pos.x * kTileSize) {
+    viewport->x += step;
   }
-  if (viewport->x > target_pos.x * tile_size) {
-    viewport->x -= tile_size * step;
+  if (viewport->x > target_pos.x * kTileSize) {
+    viewport->x -= step;
   }
-  if (viewport->y < target_pos.y * tile_size) {
-    viewport->y += tile_size * step;
+  if (viewport->y < target_pos.y * kTileSize) {
+    viewport->y += step;
   }
-  if (viewport->y > target_pos.y * tile_size) {
-    viewport->y -= tile_size * step;
+  if (viewport->y > target_pos.y * kTileSize) {
+    viewport->y -= step;
   }
 }
 
 void draw_level(Level *level, DrawContext *draw_context, Viewport *viewport) {
-  int tile_size = draw_context->tile_size;
-
   for (int y = 0; y < viewport->height; y++) {
     for (int x = 0; x < viewport->width; x++) {
       v2 src = {0, 192};
-      v2 dst = {x * tile_size - viewport->x % tile_size, y * tile_size - viewport->y % tile_size};
-      char tile_type = level->tiles[viewport->y / tile_size + y][viewport->x / tile_size + x];
+      v2 dst = {x * kTileSize - viewport->x % kTileSize, y * kTileSize - viewport->y % kTileSize};
+      char tile_type = level->tiles[viewport->y / kTileSize + y][viewport->x / kTileSize + x];
       if (tile_type == '*') {
         continue;  // ignore tile completely
       }
@@ -648,10 +644,9 @@ StateId level_starting(GameState *state) {
   load_level(level, state->level_id);
 
   u64 start = time_now();
-  while (seconds_since(start) <= 1.0) {
+  while (seconds_since(start) <= 3.0) {
     draw_level(level, draw_context, viewport);
-    // Move viewport with step = 0.15 tile
-    move_viewport(level, viewport, draw_context, 0.15);
+    move_viewport(level, viewport, 4);
     update_screen(draw_context);
   }
   return LEVEL_GAMEPLAY;
@@ -663,7 +658,6 @@ StateId level_gameplay(GameState *state) {
   Level *level = &state->level;
   Viewport *viewport = &state->viewport;
   DrawContext *draw_context = &state->draw_context;
-  int tile_size = state->draw_context.tile_size;
 
   bool rock_is_pushed = false;
   u64 start = time_now();
@@ -820,8 +814,7 @@ gameplay_loop:
       }
     }
 
-    // Move viewport with step = 1 tile
-    move_viewport(level, viewport, draw_context, 1.0);
+    move_viewport(level, viewport, kTileSize);
 
     // Move enemy
     if (seconds_since(enemy_last_move_time) > kEnemyMoveDelay) {
@@ -898,14 +891,14 @@ gameplay_loop:
 
     // Draw player
     draw_tile(draw_context, get_frame(player_animation),
-              V2(level->player_pos.x - viewport->x / tile_size,
-                 level->player_pos.y - viewport->y / tile_size));
+              V2(level->player_pos.x - viewport->x / kTileSize,
+                 level->player_pos.y - viewport->y / kTileSize));
 
     // Draw white tunnel
     if (white_tunnel) {
       for (int y = 0; y < viewport->height; y++) {
         for (int x = 0; x < viewport->width; x++) {
-          char tile_type = level->tiles[viewport->y / tile_size + y][viewport->x / tile_size + x];
+          char tile_type = level->tiles[viewport->y / kTileSize + y][viewport->x / kTileSize + x];
           if (tile_type == '_') {
             draw_tile(draw_context, V2(300, 0), V2(x, y));
           }
@@ -929,7 +922,7 @@ gameplay_loop:
       for (int y = e->area.top; y <= e->area.bottom; ++y) {
         for (int x = e->area.left; x <= e->area.right; ++x) {
           draw_tile_px(draw_context, src,
-                       V2(x * tile_size - viewport->x, y * tile_size - viewport->y));
+                       V2(x * kTileSize - viewport->x, y * kTileSize - viewport->y));
         }
       }
     }
@@ -1038,16 +1031,13 @@ int main() {
   }
 
   Viewport viewport;
-  viewport.width = 30;
-
-  int tile_size = window_width / viewport.width;
-
-  viewport.height = (window_height / tile_size);
+  viewport.width = window_width / kTileSize;
+  viewport.height = (window_height / kTileSize);
   viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
 
   // Place viewport not at (0, 0) so it moves nicely on level 0 startup.
-  viewport.x = viewport.max.x * tile_size;
-  viewport.y = viewport.max.y * tile_size;
+  viewport.x = viewport.max.x * kTileSize;
+  viewport.y = viewport.max.y * kTileSize;
 
   viewport.player_area = create_rect(viewport.width / 3, viewport.height / 3,
                                      viewport.width * 2 / 3, viewport.height * 2 / 3);
@@ -1057,10 +1047,10 @@ int main() {
   viewport.height++;
 
   v2 window_offset = {};
-  window_offset.x = (window_width % tile_size) / 2;  // to adjust tiles
-  window_offset.y = (window_height % tile_size) / 2;
+  window_offset.x = (window_width % kTileSize) / 2;  // to adjust tiles
+  window_offset.y = (window_height % kTileSize) / 2;
 
-  DrawContext draw_context = {renderer, texture, window_offset, tile_size};
+  DrawContext draw_context = {renderer, texture, window_offset};
 
   // Init animations
   u64 start = time_now();
