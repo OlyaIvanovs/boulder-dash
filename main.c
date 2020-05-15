@@ -3,7 +3,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "audio.h"
 #include "base.h"
@@ -598,12 +600,12 @@ void move_viewport(Level *level, Viewport *viewport, int step) {
   }
 }
 
-void draw_level(Level *level, DrawContext *draw_context, Viewport *viewport) {
+void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport, bool exit_level) {
   for (int y = 0; y < viewport->height; y++) {
     for (int x = 0; x < viewport->width; x++) {
       v2 src = {0, 192};
       v2 dst = {x * kTileSize - viewport->x % kTileSize, y * kTileSize - viewport->y % kTileSize};
-      char tile_type = level->tiles[viewport->y / kTileSize + y][viewport->x / kTileSize + x];
+      char tile_type = tiles[viewport->y / kTileSize + y][viewport->x / kTileSize + x];
       if (tile_type == '*') {
         continue;  // ignore tile completely
       }
@@ -624,7 +626,7 @@ void draw_level(Level *level, DrawContext *draw_context, Viewport *viewport) {
       } else if (tile_type == 'b') {
         src = get_frame(ANIM_BUTTERFLY);
       } else if (tile_type == 'X') {
-        if (level->can_exit) {
+        if (exit_level) {
           src = get_frame(ANIM_EXIT);
         } else {
           src = V2(32, 192);
@@ -640,12 +642,52 @@ StateId level_starting(GameState *state) {
   Level *level = &state->level;
   DrawContext *draw_context = &state->draw_context;
 
+  // clang-format off
+  char load_tiles[LEVEL_HEIGHT][LEVEL_WIDTH] = {
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+    {'W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W','W'},
+  };
+
+  // clang-format on
   play_sound(SOUND_COVER);
   load_level(level, state->level_id);
+  srand(time(NULL));
 
   u64 start = time_now();
+  int random_step = 1;
   while (seconds_since(start) <= 3.0) {
-    draw_level(level, draw_context, viewport);
+    draw_level(level->tiles, draw_context, viewport, level->can_exit);
+    draw_level(load_tiles, draw_context, viewport, 0);
+    for (int y = 0; y < LEVEL_HEIGHT; y++) {
+      for (int x = 0; x < LEVEL_WIDTH; x++) {
+        char *tile = &load_tiles[y][x];
+        if (*tile != 'W') continue;
+        if ((rand() % 100) > 96) {
+          *tile = '*';
+        }
+      }
+    }
     move_viewport(level, viewport, 4);
     update_screen(draw_context);
   }
@@ -887,7 +929,7 @@ gameplay_loop:
     }
 
     // Draw level
-    draw_level(level, draw_context, viewport);
+    draw_level(level->tiles, draw_context, viewport, level->can_exit);
 
     // Draw player
     draw_tile(draw_context, get_frame(player_animation),
