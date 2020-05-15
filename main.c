@@ -120,7 +120,6 @@ typedef struct Level {
   int score_per_diamond;
   int min_diamonds;
   int diamonds_collected;
-  bool can_exit;
 } Level;
 
 typedef struct Viewport {
@@ -223,7 +222,6 @@ void load_level(Level *level, int num_level) {
   level->score_per_diamond = 10;
   level->min_diamonds = (level->diamonds.num + level->butterflies.num * 9) / 6;
   level->diamonds_collected = 0;
-  level->can_exit = false;
 }
 
 v2 get_frame_from(u64 start_time, AnimationId anim_id) {
@@ -256,7 +254,7 @@ bool can_move(Level *level, v2 pos) {
   }
   char tile_type = level->tiles[pos.y][pos.x];
   if (tile_type == ' ' || tile_type == '.' || tile_type == '_' || tile_type == 'd' ||
-      (tile_type == 'X' && level->can_exit)) {
+      (tile_type == 'x')) {
     return true;
   }
   return false;
@@ -600,7 +598,7 @@ void move_viewport(Level *level, Viewport *viewport, int step) {
   }
 }
 
-void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport, bool exit_level) {
+void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
   for (int y = 0; y < viewport->height; y++) {
     for (int x = 0; x < viewport->width; x++) {
       v2 src = {0, 192};
@@ -626,12 +624,11 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport, bool
       } else if (tile_type == 'b') {
         src = get_frame(ANIM_BUTTERFLY);
       } else if (tile_type == 'X') {
-        if (exit_level) {
-          src = get_frame(ANIM_EXIT);
-        } else {
-          src = V2(32, 192);
-        }
+        src = V2(32, 192);
+      } else if (tile_type == 'x') {
+        src = get_frame(ANIM_EXIT);
       }
+
       draw_tile_px(draw_context, src, dst);
     }
   }
@@ -677,8 +674,8 @@ StateId level_starting(GameState *state) {
   u64 start = time_now();
   int random_step = 1;
   while (seconds_since(start) <= 3.0) {
-    draw_level(level->tiles, draw_context, viewport, level->can_exit);
-    draw_level(load_tiles, draw_context, viewport, 0);
+    draw_level(level->tiles, draw_context, viewport);
+    draw_level(load_tiles, draw_context, viewport);
     for (int y = 0; y < LEVEL_HEIGHT; y++) {
       for (int x = 0; x < LEVEL_WIDTH; x++) {
         char *tile = &load_tiles[y][x];
@@ -794,14 +791,22 @@ gameplay_loop:
           if (level->diamonds_collected == level->min_diamonds) {
             level->score_per_diamond = 20;
             white_tunnel = true;
-            level->can_exit = true;
             play_sound(SOUND_CRACK);
+
+            // Player can leave the level
+            for (int y = 0; y < LEVEL_HEIGHT; y++) {
+              for (int x = 0; x < LEVEL_WIDTH; x++) {
+                if (level->tiles[y][x] == 'X') {
+                  level->tiles[y][x] = 'x';
+                }
+              }
+            }
           } else {
             play_sound(SOUND_DIAMOND_COLLECT);
           }
         }
 
-        if (next_tile == 'X') {
+        if (next_tile == 'x') {
           play_sound(SOUND_FINISHED);
           load_level(level, ++state->level_id);
           continue;
@@ -929,7 +934,7 @@ gameplay_loop:
     }
 
     // Draw level
-    draw_level(level->tiles, draw_context, viewport, level->can_exit);
+    draw_level(level->tiles, draw_context, viewport);
 
     // Draw player
     draw_tile(draw_context, get_frame(player_animation),
