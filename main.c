@@ -169,7 +169,19 @@ typedef struct GameState {
 
 // ======================================= Globals =================================================
 
-Animation gAnimations[ANIM_COUNT];
+Animation gAnimations[ANIM_COUNT] = {
+    {{0, 320}, 0, 8, 15, 0},   // ANIM_DIAMOND,
+    {{0, 288}, 0, 8, 15, 0},   // ANIM_ENEMY,
+    {{32, 0}, 0, 4, 15, 1},    // ANIM_ENEMY_EXPLODED,
+    {{0, 352}, 0, 8, 15, 0},   // ANIM_BUTTERFLY,
+    {{64, 224}, 0, 7, 15, 1},  // ANIM_BUTTERFLY_EXPLODED,
+    {{0, 33}, 0, 8, 15, 0},    // ANIM_IDLE1,
+    {{0, 128}, 0, 8, 25, 0},   // ANIM_GO_LEFT,
+    {{0, 160}, 0, 8, 25, 0},   // ANIM_GO_RIGHT,
+    {{0, 66}, 0, 8, 10, 0},    // ANIM_IDLE2,
+    {{0, 98}, 0, 8, 10, 0},    // ANIM_IDLE3,
+    {{32, 192}, 0, 2, 4, 0},   // ANIM_EXIT,
+};
 const int kTileSize = 64;
 
 // ======================================= Functions ===============================================
@@ -555,17 +567,6 @@ void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_dig
     v2 dst = {pos.x + i, pos.y};
     draw_tile(context, src, dst);
   }
-}
-
-Animation create_animation(u64 start_time, int num_frames, int fps, v2 start_frame,
-                           int times_to_play) {
-  Animation animation = {};
-  animation.start_time = start_time;
-  animation.num_frames = num_frames;
-  animation.fps = fps;
-  animation.start_frame = start_frame;
-  animation.times_to_play = times_to_play;
-  return animation;
 }
 
 void update_screen(DrawContext *draw_context) {
@@ -1123,20 +1124,6 @@ int main() {
   window_offset.y = (window_height % kTileSize) / 2;
 
   DrawContext draw_context = {renderer, texture, window_offset};
-
-  // Init animations
-  u64 start = time_now();
-  gAnimations[ANIM_DIAMOND] = create_animation(start, 8, 15, V2(0, 320), 0);
-  gAnimations[ANIM_ENEMY] = create_animation(start, 8, 15, V2(0, 288), 0);
-  gAnimations[ANIM_ENEMY_EXPLODED] = create_animation(start, 4, 15, V2(32, 0), 1);
-  gAnimations[ANIM_BUTTERFLY] = create_animation(start, 8, 15, V2(0, 352), 0);
-  gAnimations[ANIM_BUTTERFLY_EXPLODED] = create_animation(start, 7, 15, V2(64, 224), 1);
-  gAnimations[ANIM_IDLE1] = create_animation(start, 8, 15, V2(0, 33), 0);
-  gAnimations[ANIM_GO_LEFT] = create_animation(start, 8, 25, V2(0, 128), 0);
-  gAnimations[ANIM_GO_RIGHT] = create_animation(start, 8, 25, V2(0, 160), 0);
-  gAnimations[ANIM_IDLE2] = create_animation(start, 8, 10, V2(0, 66), 0);
-  gAnimations[ANIM_IDLE3] = create_animation(start, 8, 10, V2(0, 98), 0);
-  gAnimations[ANIM_EXIT] = create_animation(start, 2, 4, V2(32, 192), 0);
 
   // Persistent game state
   GameState state = {};
