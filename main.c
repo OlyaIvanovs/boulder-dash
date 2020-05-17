@@ -182,7 +182,8 @@ Animation gAnimations[ANIM_COUNT] = {
     {{0, 98}, 0, 8, 10, 0},    // ANIM_IDLE3,
     {{32, 192}, 0, 2, 4, 0},   // ANIM_EXIT,
 };
-const int kTileSize = 64;
+
+int gTileSize;
 
 // ======================================= Functions ===============================================
 
@@ -539,12 +540,12 @@ void drop_objects(Level *level, char obj_sym) {
 void draw_tile_px(DrawContext *context, v2 src, v2 dst) {
   SDL_Rect src_rect = {src.x, src.y, 32, 32};
   SDL_Rect dst_rect = {context->window_offset.x + dst.x, context->window_offset.y + dst.y,
-                       kTileSize, kTileSize};
+                       gTileSize, gTileSize};
   SDL_RenderCopy(context->renderer, context->texture, &src_rect, &dst_rect);
 }
 
 void draw_tile(DrawContext *context, v2 src, v2 dst) {
-  draw_tile_px(context, src, V2(dst.x * kTileSize, dst.y * kTileSize));
+  draw_tile_px(context, src, V2(dst.x * gTileSize, dst.y * gTileSize));
 }
 
 void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_digits) {
@@ -575,7 +576,7 @@ void update_screen(DrawContext *draw_context) {
 }
 
 void move_viewport(Level *level, Viewport *viewport, int step) {
-  v2 viewport_pos = {viewport->x / kTileSize, viewport->y / kTileSize};
+  v2 viewport_pos = {viewport->x / gTileSize, viewport->y / gTileSize};
   v2 target_pos = viewport_pos;
 
   int rel_player_x = level->player_pos.x - viewport_pos.x;
@@ -606,16 +607,16 @@ void move_viewport(Level *level, Viewport *viewport, int step) {
     }
   }
 
-  if (viewport->x < target_pos.x * kTileSize) {
+  if (viewport->x < target_pos.x * gTileSize) {
     viewport->x += step;
   }
-  if (viewport->x > target_pos.x * kTileSize) {
+  if (viewport->x > target_pos.x * gTileSize) {
     viewport->x -= step;
   }
-  if (viewport->y < target_pos.y * kTileSize) {
+  if (viewport->y < target_pos.y * gTileSize) {
     viewport->y += step;
   }
-  if (viewport->y > target_pos.y * kTileSize) {
+  if (viewport->y > target_pos.y * gTileSize) {
     viewport->y -= step;
   }
 }
@@ -624,8 +625,8 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
   for (int y = 0; y < viewport->height; y++) {
     for (int x = 0; x < viewport->width; x++) {
       v2 src = {0, 192};
-      v2 dst = {x * kTileSize - viewport->x % kTileSize, y * kTileSize - viewport->y % kTileSize};
-      char tile_type = tiles[viewport->y / kTileSize + y][viewport->x / kTileSize + x];
+      v2 dst = {x * gTileSize - viewport->x % gTileSize, y * gTileSize - viewport->y % gTileSize};
+      char tile_type = tiles[viewport->y / gTileSize + y][viewport->x / gTileSize + x];
       if (tile_type == '*') {
         continue;  // ignore tile completely
       }
@@ -887,7 +888,7 @@ gameplay_loop:
       }
     }
 
-    move_viewport(level, viewport, kTileSize);
+    move_viewport(level, viewport, gTileSize);
 
     // Move enemy
     if (seconds_since(enemy_last_move_time) > kEnemyMoveDelay) {
@@ -964,14 +965,14 @@ gameplay_loop:
 
     // Draw player
     draw_tile(draw_context, get_frame(player_animation),
-              V2(level->player_pos.x - viewport->x / kTileSize,
-                 level->player_pos.y - viewport->y / kTileSize));
+              V2(level->player_pos.x - viewport->x / gTileSize,
+                 level->player_pos.y - viewport->y / gTileSize));
 
     // Draw white tunnel
     if (white_tunnel) {
       for (int y = 0; y < viewport->height; y++) {
         for (int x = 0; x < viewport->width; x++) {
-          char tile_type = level->tiles[viewport->y / kTileSize + y][viewport->x / kTileSize + x];
+          char tile_type = level->tiles[viewport->y / gTileSize + y][viewport->x / gTileSize + x];
           if (tile_type == '_') {
             draw_tile(draw_context, V2(300, 0), V2(x, y));
           }
@@ -995,7 +996,7 @@ gameplay_loop:
       for (int y = e->area.top; y <= e->area.bottom; ++y) {
         for (int x = e->area.left; x <= e->area.right; ++x) {
           draw_tile_px(draw_context, src,
-                       V2(x * kTileSize - viewport->x, y * kTileSize - viewport->y));
+                       V2(x * gTileSize - viewport->x, y * gTileSize - viewport->y));
         }
       }
     }
@@ -1104,13 +1105,14 @@ int main() {
   }
 
   Viewport viewport;
-  viewport.width = window_width / kTileSize;
-  viewport.height = (window_height / kTileSize);
+  viewport.width = 30;
+  gTileSize = window_width / viewport.width;
+  viewport.height = (window_height / gTileSize);
   viewport.max = V2(LEVEL_WIDTH - viewport.width, LEVEL_HEIGHT - viewport.height);
 
   // Place viewport not at (0, 0) so it moves nicely on level 0 startup.
-  viewport.x = viewport.max.x * kTileSize;
-  viewport.y = viewport.max.y * kTileSize;
+  viewport.x = viewport.max.x * gTileSize;
+  viewport.y = viewport.max.y * gTileSize;
 
   viewport.player_area = create_rect(viewport.width / 3, viewport.height / 3,
                                      viewport.width * 2 / 3, viewport.height * 2 / 3);
@@ -1120,8 +1122,8 @@ int main() {
   viewport.height++;
 
   v2 window_offset = {};
-  window_offset.x = (window_width % kTileSize) / 2;  // to adjust tiles
-  window_offset.y = (window_height % kTileSize) / 2;
+  window_offset.x = (window_width % gTileSize) / 2;  // to adjust tiles
+  window_offset.y = (window_height % gTileSize) / 2;
 
   DrawContext draw_context = {renderer, texture, window_offset};
 
