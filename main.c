@@ -747,6 +747,16 @@ StateId level_starting(GameState *state) {
   return LEVEL_GAMEPLAY;
 }
 
+StateId level_ending(GameState *state) {
+  u64 start = time_now();
+
+  play_sound(SOUND_FINISHED);
+  while (seconds_since(start) <= 3.0) {
+  }
+  state->level_id++;
+  return LEVEL_STARTING;
+}
+
 StateId level_gameplay(GameState *state) {
   StateId next_state = QUIT_GAME;
 
@@ -824,9 +834,11 @@ gameplay_loop:
           }
         }
 
+        // Level ends. Go to next level.
         if (next_tile == 'x') {
-          play_sound(SOUND_FINISHED);
-          load_level(level, ++state->level_id);
+          return LEVEL_ENDING;
+          // play_sound(SOUND_FINISHED);
+          // load_level(level, ++state->level_id);
           continue;
         }
 
@@ -1134,6 +1146,9 @@ int main() {
       } break;
       case LEVEL_GAMEPLAY: {
         next_state = level_gameplay(&state);
+      } break;
+      case LEVEL_ENDING: {
+        next_state = level_ending(&state);
       } break;
       case QUIT_GAME: {
         is_running = false;
