@@ -36,6 +36,9 @@ typedef struct {
   bool left;
   bool up;
   bool down;
+
+  bool quit;
+  bool reset;
 } Input;
 
 typedef struct {
@@ -193,6 +196,52 @@ u64 time_now() {
 
 double seconds_since(u64 timestamp) {
   return (double)(time_now() - timestamp) / gPerformanceFrequency;
+}
+
+void process_input(Input *input) {
+  SDL_Event event;
+  while (SDL_PollEvent(&event)) {
+    if (event.type == SDL_QUIT) {
+      input->quit = true;
+    }
+    if (event.type == SDL_KEYUP) {
+      if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+        input->quit = true;
+      }
+    }
+    if (event.type == SDL_KEYDOWN) {
+      if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
+        input->right = true;
+      }
+      if (event.key.keysym.scancode == SDL_SCANCODE_LEFT) {
+        input->left = true;
+      }
+      if (event.key.keysym.scancode == SDL_SCANCODE_UP) {
+        input->up = true;
+      }
+      if (event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
+        input->down = true;
+      }
+    }
+
+    if (event.type == SDL_KEYUP) {
+      if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
+        input->right = false;
+      }
+      if (event.key.keysym.scancode == SDL_SCANCODE_LEFT) {
+        input->left = false;
+      }
+      if (event.key.keysym.scancode == SDL_SCANCODE_UP) {
+        input->up = false;
+      }
+      if (event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
+        input->down = false;
+      }
+      if (event.key.keysym.sym == 'r') {
+        input->reset = true;
+      }
+    }
+  }
 }
 
 void load_level(Level *level, int num_level) {
@@ -666,17 +715,23 @@ StateId level_starting(GameState *state) {
   Tiles tiles;
   SDL_memcpy(tiles, load_tiles, LEVEL_HEIGHT * LEVEL_WIDTH);
 
+  Input input = {};
+
   play_sound(SOUND_COVER);
   load_level(level, state->level_id);
-  srand(time(NULL));
 
+  srand(time(NULL));
   u64 start = time_now();
-  int random_step = 1;
   while (seconds_since(start) <= 3.0) {
     draw_level(level->tiles, draw_context, viewport);
     draw_level(tiles, draw_context, viewport);
 
-    // ???????????????????
+    process_input(&input);
+    if (input.quit) {
+      return QUIT_GAME;
+    }
+
+    // Remove 'wall-tile' from tiles of loading picture if random number (0, 99) > 96
     for (int y = 0; y < LEVEL_HEIGHT; y++) {
       for (int x = 0; x < LEVEL_WIDTH; x++) {
         char *tile = &tiles[y][x];
@@ -710,64 +765,26 @@ StateId level_gameplay(GameState *state) {
   const double kDropDelay = 0.15;
   const double kEnemyMoveDelay = 0.15;
 
-  Input input = {false, false, false, false};
-
   AnimationId player_animation = ANIM_IDLE1;
   AnimationId previos_direction_anim = ANIM_GO_RIGHT;
 
   bool is_running = true;
+  Input input = {};
 gameplay_loop:
   while (is_running) {
     bool white_tunnel = false;
     double frame_time = seconds_since(start);  // for animation
 
-    SDL_Event event;
-    while (SDL_PollEvent(&event)) {
-      if (event.type == SDL_QUIT) {
-        is_running = false;
-        next_state = QUIT_GAME;
-        break;
-      }
-      if (event.type == SDL_KEYUP) {
-        if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
-          is_running = false;
-          next_state = QUIT_GAME;
-          break;
-        }
-      }
-      if (event.type == SDL_KEYDOWN) {
-        if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
-          input.right = true;
-        }
-        if (event.key.keysym.scancode == SDL_SCANCODE_LEFT) {
-          input.left = true;
-        }
-        if (event.key.keysym.scancode == SDL_SCANCODE_UP) {
-          input.up = true;
-        }
-        if (event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
-          input.down = true;
-        }
-      }
+    process_input(&input);
 
-      if (event.type == SDL_KEYUP) {
-        if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
-          input.right = false;
-        }
-        if (event.key.keysym.scancode == SDL_SCANCODE_LEFT) {
-          input.left = false;
-        }
-        if (event.key.keysym.scancode == SDL_SCANCODE_UP) {
-          input.up = false;
-        }
-        if (event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
-          input.down = false;
-        }
-        if (event.key.keysym.sym == 'r') {
-          load_level(level, state->level_id);
-          goto gameplay_loop;
-        }
-      }
+    if (input.quit) {
+      is_running = false;
+      next_state = QUIT_GAME;
+    }
+
+    if (input.reset) {
+      load_level(level, state->level_id);
+      goto gameplay_loop;
     }
 
     // Move player
