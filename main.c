@@ -691,6 +691,8 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
         src = V2(32, 224);
       } else if (tile_type == 'E') {
         src = get_frame(ANIM_EXIT);
+      } else if (tile_type == 'N') {
+        src = get_frame(ANIM_GO_RIGHT);
       } else if (tile_type == 'd') {
         src = get_frame(ANIM_DIAMOND);
       } else if (tile_type == 'f') {
@@ -712,8 +714,8 @@ StateId level_starting(GameState *state) {
   Viewport *viewport = &state->viewport;
   Level *level = &state->level;
   DrawContext *draw_context = &state->draw_context;
-  Tiles tiles;
-  SDL_memcpy(tiles, load_tiles, LEVEL_HEIGHT * LEVEL_WIDTH);
+  Tiles load_tiles;
+  SDL_memcpy(load_tiles, gLoadTiles, LEVEL_HEIGHT * LEVEL_WIDTH);
 
   Input input = {};
 
@@ -724,7 +726,7 @@ StateId level_starting(GameState *state) {
   u64 start = time_now();
   while (seconds_since(start) <= 3.0) {
     draw_level(level->tiles, draw_context, viewport);
-    draw_level(tiles, draw_context, viewport);
+    draw_level(load_tiles, draw_context, viewport);
 
     process_input(&input);
     if (input.quit) {
@@ -734,7 +736,7 @@ StateId level_starting(GameState *state) {
     // Remove 'wall-tile' from tiles of loading picture if random number (0, 99) > 96
     for (int y = 0; y < LEVEL_HEIGHT; y++) {
       for (int x = 0; x < LEVEL_WIDTH; x++) {
-        char *tile = &tiles[y][x];
+        char *tile = &load_tiles[y][x];
         if (*tile != 'L') continue;
         if ((rand() % 100) > 96) {
           *tile = '*';
@@ -748,18 +750,32 @@ StateId level_starting(GameState *state) {
 }
 
 StateId level_ending(GameState *state) {
+  Level *level = &state->level;
+  DrawContext *draw_context = &state->draw_context;
+  Input input = {};
   u64 start = time_now();
 
   play_sound(SOUND_FINISHED);
   while (seconds_since(start) <= 3.0) {
+    draw_level(level->tiles, draw_context, &state->viewport);
+    process_input(&input);
+    if (input.quit) {
+      return QUIT_GAME;
+    }
+    update_screen(draw_context);
   }
   state->level_id++;
-  return LEVEL_STARTING;
+
+  StateId next_state;
+  if (state->level_id <= sizeof(gLevels)) {
+    next_state = LEVEL_STARTING;
+  } else {
+    next_state = QUIT_GAME;
+  }
+  return next_state;
 }
 
 StateId level_gameplay(GameState *state) {
-  StateId next_state = QUIT_GAME;
-
   Level *level = &state->level;
   Viewport *viewport = &state->viewport;
   DrawContext *draw_context = &state->draw_context;
@@ -778,23 +794,17 @@ StateId level_gameplay(GameState *state) {
   AnimationId player_animation = ANIM_IDLE1;
   AnimationId previos_direction_anim = ANIM_GO_RIGHT;
 
-  bool is_running = true;
   Input input = {};
-gameplay_loop:
-  while (is_running) {
+  while (true) {
     bool white_tunnel = false;
     double frame_time = seconds_since(start);  // for animation
 
     process_input(&input);
-
     if (input.quit) {
-      is_running = false;
-      next_state = QUIT_GAME;
+      return QUIT_GAME;
     }
-
     if (input.reset) {
-      load_level(level, state->level_id);
-      goto gameplay_loop;
+      return LEVEL_STARTING;
     }
 
     // Move player
@@ -836,9 +846,8 @@ gameplay_loop:
 
         // Level ends. Go to next level.
         if (next_tile == 'x') {
+          level->tiles[next_player_pos.y][next_player_pos.x] = 'N';
           return LEVEL_ENDING;
-          // play_sound(SOUND_FINISHED);
-          // load_level(level, ++state->level_id);
           continue;
         }
 
@@ -1049,7 +1058,7 @@ gameplay_loop:
     // }
   }
 
-  return next_state;
+  return QUIT_GAME;
 }
 
 int main() {
