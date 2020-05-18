@@ -158,6 +158,7 @@ typedef enum AnimationId {
   ANIM_IDLE2,
   ANIM_IDLE3,
   ANIM_EXIT,
+  ANIM_PLAYER_HERE,
 
   ANIM_COUNT,
 } AnimationId;
@@ -184,6 +185,7 @@ Animation gAnimations[ANIM_COUNT] = {
     {{0, 66}, 0, 8, 10, 0},    // ANIM_IDLE2,
     {{0, 98}, 0, 8, 10, 0},    // ANIM_IDLE3,
     {{32, 192}, 0, 2, 4, 0},   // ANIM_EXIT,
+    {{32, 0}, 0, 3, 3, 0},     // ANIM_PLAYER_HERE,
 };
 
 int gTileSize;
@@ -703,6 +705,8 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
         src = V2(32, 192);
       } else if (tile_type == 'x') {
         src = get_frame(ANIM_EXIT);
+      } else if (tile_type == 'S') {
+        src = get_frame(ANIM_PLAYER_HERE);
       }
 
       draw_tile_px(draw_context, src, dst);
@@ -724,26 +728,41 @@ StateId level_starting(GameState *state) {
 
   srand(time(NULL));
   u64 start = time_now();
-  while (seconds_since(start) <= 3.0) {
+  while (seconds_since(start) <= 3.5) {
     draw_level(level->tiles, draw_context, viewport);
-    draw_level(load_tiles, draw_context, viewport);
 
     process_input(&input);
     if (input.quit) {
       return QUIT_GAME;
     }
 
-    // Remove 'wall-tile' from tiles of loading picture if random number (0, 99) > 96
-    for (int y = 0; y < LEVEL_HEIGHT; y++) {
-      for (int x = 0; x < LEVEL_WIDTH; x++) {
-        char *tile = &load_tiles[y][x];
-        if (*tile != 'L') continue;
-        if ((rand() % 100) > 96) {
-          *tile = '*';
+    if (seconds_since(start) <= 3.0) {
+      draw_level(load_tiles, draw_context, viewport);
+      // Remove 'wall-tile' from tiles of loading picture if random number (0, 99) > 96
+      for (int y = 0; y < LEVEL_HEIGHT; y++) {
+        for (int x = 0; x < LEVEL_WIDTH; x++) {
+          char *tile = &load_tiles[y][x];
+          if (*tile != 'L') continue;
+          if ((rand() % 100) > 96) {
+            *tile = '*';
+          }
+        }
+      }
+      move_viewport(level, viewport, 4);
+    }
+
+    if (seconds_since(start) > 3.0) {
+      for (int y = 0; y < LEVEL_HEIGHT; y++) {
+        for (int x = 0; x < LEVEL_WIDTH; x++) {
+          char *tile = &level->tiles[y][x];
+          if (*tile == 'E') {
+            play_sound(SOUND_CRACK);
+            *tile = 'S';  // add 'bomb' animation before player is appeared
+          }
         }
       }
     }
-    move_viewport(level, viewport, 4);
+
     update_screen(draw_context);
   }
   return LEVEL_GAMEPLAY;
