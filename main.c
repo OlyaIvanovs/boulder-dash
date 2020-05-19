@@ -318,7 +318,7 @@ v2 get_frame(AnimationId anim_id) {
 }
 
 v2 get_moving_frame() {
-  AnimationMoving anim = {{97, 446}, {129, 414}, 0, 0.8};
+  AnimationMoving anim = {{97, 476}, {129, 444}, 0, 0.8};
   double cycles_passed = seconds_since(anim.start_time) / anim.duration;
   double whole_cycles;
   double part_cycle = modf(cycles_passed, &whole_cycles);
@@ -728,6 +728,7 @@ StateId level_starting(GameState *state) {
 
   srand(time(NULL));
   u64 start = time_now();
+  bool player_appeared = false;
   while (seconds_since(start) <= 3.5) {
     draw_level(level->tiles, draw_context, viewport);
 
@@ -736,31 +737,24 @@ StateId level_starting(GameState *state) {
       return QUIT_GAME;
     }
 
-    if (seconds_since(start) <= 3.0) {
-      draw_level(load_tiles, draw_context, viewport);
-      // Remove 'wall-tile' from tiles of loading picture if random number (0, 99) > 96
-      for (int y = 0; y < LEVEL_HEIGHT; y++) {
-        for (int x = 0; x < LEVEL_WIDTH; x++) {
-          char *tile = &load_tiles[y][x];
-          if (*tile != 'L') continue;
-          if ((rand() % 100) > 96) {
-            *tile = '*';
-          }
-        }
-      }
-      move_viewport(level, viewport, 4);
-    }
+    // draw_level(load_tiles, draw_context, viewport);
+    // // Remove 'wall-tile' from tiles of loading picture if random number (0, 99) > 96
+    // for (int y = 0; y < LEVEL_HEIGHT; y++) {
+    //   for (int x = 0; x < LEVEL_WIDTH; x++) {
+    //     char *tile = &load_tiles[y][x];
+    //     if (*tile != 'L') continue;
+    //     if ((rand() % 100) > 96) {
+    //       *tile = '*';
+    //     }
+    //   }
+    // }
+    move_viewport(level, viewport, 4);
 
-    if (seconds_since(start) > 3.0) {
-      for (int y = 0; y < LEVEL_HEIGHT; y++) {
-        for (int x = 0; x < LEVEL_WIDTH; x++) {
-          char *tile = &level->tiles[y][x];
-          if (*tile == 'E') {
-            play_sound(SOUND_CRACK);
-            *tile = 'S';  // add 'bomb' animation before player is appeared
-          }
-        }
-      }
+    if (seconds_since(start) > 3.0 && !player_appeared) {
+      v2 pos = level->player_pos;
+      level->tiles[pos.y][pos.x] = 'S';  // add 'bomb' animation before player is appeared
+      play_sound(SOUND_CRACK);
+      player_appeared = true;
     }
 
     update_screen(draw_context);
@@ -785,13 +779,10 @@ StateId level_ending(GameState *state) {
   }
   state->level_id++;
 
-  StateId next_state;
-  if (state->level_id <= sizeof(gLevels)) {
-    next_state = LEVEL_STARTING;
-  } else {
-    next_state = QUIT_GAME;
+  if (state->level_id >= sizeof(gLevels)) {
+    return QUIT_GAME;  // TODO; you won!
   }
-  return next_state;
+  return LEVEL_STARTING;
 }
 
 StateId level_gameplay(GameState *state) {
@@ -1161,7 +1152,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 0;
+  state.level_id = 1;
   state.draw_context = draw_context;
   state.viewport = viewport;
 
