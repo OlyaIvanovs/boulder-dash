@@ -1,3 +1,5 @@
+#include <SDL2/SDL_rect.h>
+#include <SDL2/SDL_render.h>
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
@@ -599,6 +601,35 @@ void draw_tile(DrawContext *context, v2 src, v2 dst) {
   draw_tile_px(context, src, V2(dst.x * gTileSize, dst.y * gTileSize));
 }
 
+// void draw_outside_border(DrawContext *context, Viewport *viewport) {
+//   SDL_Rect top_rect = {0, 0, window_width, context->window_offset.y};
+//   // SDL_Rect top_rect = {context->window_offset.x, 0, viewport->width,
+//   context->window_offset.y}; SDL_Rect bottom_rect = {0, window_height - context->window_offset.y,
+//   window_width,
+//                           context->window_offset.y};
+//   SDL_Rect rects[2] = {top_rect, bottom_rect};
+//   const SDL_Rect *r = rects;
+//   // SDL_SetRenderDrawColor(context->renderer, 255, 255, 255, 255);
+//   SDL_RenderFillRects(context->renderer, r, 2);
+// }
+
+void draw_outside_border(DrawContext *context, Viewport *viewport) {
+  int top_border = -1;
+  int bottom_border = viewport->height - 1;
+  for (int x = 0; x < (viewport->width - 1); x++) {
+    draw_tile_px(context, V2(128, 0),
+                 V2(x * gTileSize, top_border * gTileSize));  // V2(128, 0) white
+    draw_tile(context, V2(128, 0), V2(x, bottom_border));
+  }
+
+  int left_border = -1;
+  int right_border = viewport->width - 1;
+  for (int y = 0; y < (viewport->height - 1); y++) {
+    draw_tile(context, V2(128, 0), V2(left_border, y));
+    draw_tile(context, V2(128, 0), V2(right_border, y));
+  }
+}
+
 void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_digits) {
   int digits[15] = {};
   int num_digits = 0;
@@ -712,6 +743,7 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
       draw_tile_px(draw_context, src, dst);
     }
   }
+  draw_outside_border(draw_context, viewport);
 }
 
 StateId level_starting(GameState *state) {
@@ -737,17 +769,18 @@ StateId level_starting(GameState *state) {
       return QUIT_GAME;
     }
 
-    // draw_level(load_tiles, draw_context, viewport);
-    // // Remove 'wall-tile' from tiles of loading picture if random number (0, 99) > 96
-    // for (int y = 0; y < LEVEL_HEIGHT; y++) {
-    //   for (int x = 0; x < LEVEL_WIDTH; x++) {
-    //     char *tile = &load_tiles[y][x];
-    //     if (*tile != 'L') continue;
-    //     if ((rand() % 100) > 96) {
-    //       *tile = '*';
-    //     }
-    //   }
-    // }
+    draw_level(load_tiles, draw_context, viewport);
+    // Remove 'wall-tile' from tiles of loading picture if random number (0, 99) > 96
+    for (int y = 0; y < LEVEL_HEIGHT; y++) {
+      for (int x = 0; x < LEVEL_WIDTH; x++) {
+        char *tile = &load_tiles[y][x];
+        if (*tile != 'L') continue;
+        if ((rand() % 100) > 96) {
+          *tile = '*';
+        }
+      }
+    }
+
     move_viewport(level, viewport, 4);
 
     if (seconds_since(start) > 3.0 && !player_appeared) {
@@ -756,7 +789,6 @@ StateId level_starting(GameState *state) {
       play_sound(SOUND_CRACK);
       player_appeared = true;
     }
-
     update_screen(draw_context);
   }
   return LEVEL_GAMEPLAY;
@@ -771,12 +803,17 @@ StateId level_ending(GameState *state) {
   play_sound(SOUND_FINISHED);
   while (seconds_since(start) <= 3.0) {
     draw_level(level->tiles, draw_context, &state->viewport);
+    // Draw status bar's background black
+    for (int x = 0; x < (state->viewport.width - 1); x++) {
+      draw_tile(draw_context, V2(128, 0), V2(x, 0));
+    }
     process_input(&input);
+    update_screen(draw_context);
     if (input.quit) {
       return QUIT_GAME;
     }
-    update_screen(draw_context);
   }
+
   state->level_id++;
 
   if (state->level_id >= sizeof(gLevels)) {
@@ -1057,8 +1094,7 @@ StateId level_gameplay(GameState *state) {
     }
     draw_number(draw_context, time_to_show, pos_time, COLOR_WHITE, 3);
 
-    SDL_RenderPresent(draw_context->renderer);
-    SDL_RenderClear(draw_context->renderer);
+    update_screen(draw_context);
 
     // {
     //     u64 now = time_now();
@@ -1152,7 +1188,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 1;
+  state.level_id = 0;
   state.draw_context = draw_context;
   state.viewport = viewport;
 
