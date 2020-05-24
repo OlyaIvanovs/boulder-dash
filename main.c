@@ -169,6 +169,7 @@ typedef struct GameState {
   Level level;
   DrawContext draw_context;
   Viewport viewport;
+  StateId state_id;
   int level_id;
   int score;
 } GameState;
@@ -652,6 +653,45 @@ void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_dig
   }
 }
 
+void draw_status_bar(GameState *state) {
+  Viewport *viewport = &state->viewport;
+  DrawContext *draw_context = &state->draw_context;
+  Level *level = &state->level;
+
+  // Draw status bar's background black
+  for (int x = 0; x < (viewport->width - 1); x++) {
+    draw_tile(draw_context, V2(128, 0), V2(x, 0));
+  }
+
+  // Display overall score
+  v2 pos_score = {viewport->width - 7, 0};
+  draw_number(draw_context, state->score, pos_score, COLOR_WHITE, 6);
+
+  if (state->state_id == LEVEL_STARTING) return;
+
+  // Display time
+  v2 pos_time = {viewport->width / 2, 0};
+  draw_number(draw_context, level->time_left, pos_time, COLOR_WHITE, 3);
+
+  if (state->state_id == LEVEL_ENDING) return;
+
+  // Display number of diamonds to collect
+  v2 white_diamond = {256, 32};
+  draw_tile(draw_context, white_diamond, V2(2, 0));
+
+  if (level->diamonds_collected < level->min_diamonds) {
+    draw_number(draw_context, level->min_diamonds, V2(0, 0), COLOR_YELLOW, 2);
+  } else {
+    draw_tile(draw_context, white_diamond, V2(0, 0));
+    draw_tile(draw_context, white_diamond, V2(1, 0));
+  }
+  draw_number(draw_context, level->score_per_diamond, V2(3, 0), COLOR_WHITE, 2);
+
+  // Display number of collected diamonds
+  v2 pos_diamonds = {10, 0};
+  draw_number(draw_context, level->diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
+}
+
 void update_screen(DrawContext *draw_context) {
   SDL_RenderPresent(draw_context->renderer);
   SDL_RenderClear(draw_context->renderer);
@@ -761,6 +801,7 @@ StateId level_starting(GameState *state) {
   srand(time(NULL));
   u64 start = time_now();
   bool player_appeared = false;
+
   while (seconds_since(start) <= 3.5) {
     draw_level(level->tiles, draw_context, viewport);
 
@@ -781,7 +822,9 @@ StateId level_starting(GameState *state) {
       }
     }
 
-    move_viewport(level, viewport, 4);
+    if (seconds_since(start) > 0.1) {
+      move_viewport(level, viewport, 4);
+    }
 
     if (seconds_since(start) > 3.0 && !player_appeared) {
       v2 pos = level->player_pos;
@@ -789,33 +832,46 @@ StateId level_starting(GameState *state) {
       play_sound(SOUND_CRACK);
       player_appeared = true;
     }
+
+    draw_status_bar(state);
     update_screen(draw_context);
   }
   return LEVEL_GAMEPLAY;
 }
 
 StateId level_ending(GameState *state) {
+  const double kScorePlusDelay = 0.03;
   Level *level = &state->level;
   DrawContext *draw_context = &state->draw_context;
   Input input = {};
   u64 start = time_now();
+  u64 score_plus_last_time = start;
 
   play_sound(SOUND_FINISHED);
-  while (seconds_since(start) <= 3.0) {
+
+  while (seconds_since(start) <= 6.0) {
     draw_level(level->tiles, draw_context, &state->viewport);
-    // Draw status bar's background black
-    for (int x = 0; x < (state->viewport.width - 1); x++) {
-      draw_tile(draw_context, V2(128, 0), V2(x, 0));
+    draw_status_bar(state);
+
+    if ((level->time_left > 0) && (seconds_since(score_plus_last_time) > kScorePlusDelay)) {
+      score_plus_last_time = time_now();
+      level->time_left--;
+      state->score += 5;
     }
+
     process_input(&input);
     update_screen(draw_context);
     if (input.quit) {
       return QUIT_GAME;
     }
+
+    if ((level->time_left == 0) &&
+        (seconds_since(start) > 3.0)) {  // not wait too long if score is calculated
+      break;
+    }
   }
 
   state->level_id++;
-
   if (state->level_id >= sizeof(gLevels)) {
     return QUIT_GAME;  // TODO; you won!
   }
@@ -829,6 +885,7 @@ StateId level_gameplay(GameState *state) {
 
   bool rock_is_pushed = false;
   u64 start = time_now();
+  int level_time = level->time_left;
   u64 rock_start_move_time = start;
   u64 player_last_move_time = start;
   int walking_sound_cooldown = 1;
@@ -891,7 +948,7 @@ StateId level_gameplay(GameState *state) {
           }
         }
 
-        // Level ends. Go to next level.
+        // Level ends. Go to the next level.
         if (next_tile == 'x') {
           level->tiles[next_player_pos.y][next_player_pos.x] = 'N';
           return LEVEL_ENDING;
@@ -1060,40 +1117,13 @@ StateId level_gameplay(GameState *state) {
       }
     }
 
-    // Draw status
-    // Draw status bar's background black
-    for (int x = 0; x < (viewport->width - 1); x++) {
-      draw_tile(draw_context, V2(128, 0), V2(x, 0));
+    // Time left
+    level->time_left = level_time - (int)(seconds_since(start));
+    if (level->time_left < 0) {
+      level->time_left = 0;
     }
 
-    // Display number of diamonds to collect
-    v2 white_diamond = {256, 32};
-    draw_tile(draw_context, white_diamond, V2(2, 0));
-
-    if (level->diamonds_collected < level->min_diamonds) {
-      draw_number(draw_context, level->min_diamonds, V2(0, 0), COLOR_YELLOW, 2);
-    } else {
-      draw_tile(draw_context, white_diamond, V2(0, 0));
-      draw_tile(draw_context, white_diamond, V2(1, 0));
-    }
-    draw_number(draw_context, level->score_per_diamond, V2(3, 0), COLOR_WHITE, 2);
-
-    // Display number of collected diamonds
-    v2 pos_diamonds = {10, 0};
-    draw_number(draw_context, level->diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
-
-    // Display overall score
-    v2 pos_score = {viewport->width - 7, 0};
-    draw_number(draw_context, state->score, pos_score, COLOR_WHITE, 6);
-
-    // Display time
-    v2 pos_time = {viewport->width / 2, 0};
-    int time_to_show = level->time_left - (int)(seconds_since(start));
-    if (time_to_show < 0) {
-      time_to_show = 0;
-    }
-    draw_number(draw_context, time_to_show, pos_time, COLOR_WHITE, 3);
-
+    draw_status_bar(state);
     update_screen(draw_context);
 
     // {
@@ -1188,22 +1218,22 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 0;
+  state.level_id = 1;
   state.draw_context = draw_context;
   state.viewport = viewport;
+  state.state_id = LEVEL_STARTING;
 
-  StateId next_state = LEVEL_STARTING;
   bool is_running = true;
   while (is_running) {
-    switch (next_state) {
+    switch (state.state_id) {
       case LEVEL_STARTING: {
-        next_state = level_starting(&state);
+        state.state_id = level_starting(&state);
       } break;
       case LEVEL_GAMEPLAY: {
-        next_state = level_gameplay(&state);
+        state.state_id = level_gameplay(&state);
       } break;
       case LEVEL_ENDING: {
-        next_state = level_ending(&state);
+        state.state_id = level_ending(&state);
       } break;
       case QUIT_GAME: {
         is_running = false;
