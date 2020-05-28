@@ -602,25 +602,13 @@ void draw_tile(DrawContext *context, v2 src, v2 dst) {
   draw_tile_px(context, src, V2(dst.x * gTileSize, dst.y * gTileSize));
 }
 
-// void draw_outside_border(DrawContext *context, Viewport *viewport) {
-//   SDL_Rect top_rect = {0, 0, window_width, context->window_offset.y};
-//   // SDL_Rect top_rect = {context->window_offset.x, 0, viewport->width,
-//   context->window_offset.y}; SDL_Rect bottom_rect = {0, window_height - context->window_offset.y,
-//   window_width,
-//                           context->window_offset.y};
-//   SDL_Rect rects[2] = {top_rect, bottom_rect};
-//   const SDL_Rect *r = rects;
-//   // SDL_SetRenderDrawColor(context->renderer, 255, 255, 255, 255);
-//   SDL_RenderFillRects(context->renderer, r, 2);
-// }
-
 void draw_outside_border(DrawContext *context, Viewport *viewport) {
   int top_border = -1;
   int bottom_border = viewport->height - 1;
+  v2 black = V2(128, 0);  // V2(128, 0) white
   for (int x = 0; x < (viewport->width - 1); x++) {
-    draw_tile_px(context, V2(128, 0),
-                 V2(x * gTileSize, top_border * gTileSize));  // V2(128, 0) white
-    draw_tile(context, V2(128, 0), V2(x, bottom_border));
+    draw_tile(context, black, V2(x, top_border));
+    draw_tile(context, black, V2(x, bottom_border));
   }
 
   int left_border = -1;
@@ -822,9 +810,7 @@ StateId level_starting(GameState *state) {
       }
     }
 
-    if (seconds_since(start) > 0.1) {
-      move_viewport(level, viewport, 4);
-    }
+    move_viewport(level, viewport, 4);
 
     if (seconds_since(start) > 3.0 && !player_appeared) {
       v2 pos = level->player_pos;
@@ -840,7 +826,7 @@ StateId level_starting(GameState *state) {
 }
 
 StateId level_ending(GameState *state) {
-  const double kScorePlusDelay = 0.03;
+  const double kScorePlusDelay = 0.04;
   Level *level = &state->level;
   DrawContext *draw_context = &state->draw_context;
   Input input = {};
@@ -849,26 +835,22 @@ StateId level_ending(GameState *state) {
 
   play_sound(SOUND_FINISHED);
 
-  while (seconds_since(start) <= 6.0) {
+  while ((seconds_since(start) < 3.0) || (level->time_left > 0)) {
     draw_level(level->tiles, draw_context, &state->viewport);
     draw_status_bar(state);
 
-    if ((level->time_left > 0) && (seconds_since(score_plus_last_time) > kScorePlusDelay)) {
+    if (seconds_since(score_plus_last_time) > kScorePlusDelay) {
       score_plus_last_time = time_now();
       level->time_left--;
       state->score += 5;
     }
 
     process_input(&input);
-    update_screen(draw_context);
     if (input.quit) {
       return QUIT_GAME;
     }
 
-    if ((level->time_left == 0) &&
-        (seconds_since(start) > 3.0)) {  // not wait too long if score is calculated
-      break;
-    }
+    update_screen(draw_context);
   }
 
   state->level_id++;
@@ -1218,7 +1200,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 1;
+  state.level_id = 0;
   state.draw_context = draw_context;
   state.viewport = viewport;
   state.state_id = LEVEL_STARTING;
