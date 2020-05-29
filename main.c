@@ -48,6 +48,11 @@ typedef struct {
   int y;
 } v2;
 
+typedef struct Stone {
+  v2 pos;
+  bool falling;
+} Stone;
+
 static inline v2 V2(int x, int y) {
   v2 result = {x, y};
   return result;
@@ -70,7 +75,7 @@ static inline Rect create_rect(int left, int top, int right, int bottom) {
 }
 
 typedef struct Objects {
-  v2 objects[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
+  Stone objects[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
   int num;
 } Objects;
 
@@ -277,15 +282,17 @@ void load_level(Level *level, int num_level) {
       }
 
       if (level->tiles[y][x] == 'r') {
-        level->rocks.objects[level->rocks.num].x = x;
-        level->rocks.objects[level->rocks.num].y = y;
+        level->rocks.objects[level->rocks.num].pos.x = x;
+        level->rocks.objects[level->rocks.num].pos.y = y;
+        level->rocks.objects[level->rocks.num].falling = false;
         level->rocks.num++;
         assert(level->rocks.num < COUNT(level->rocks.objects));
       }
 
       if (level->tiles[y][x] == 'd') {
-        level->diamonds.objects[level->diamonds.num].x = x;
-        level->diamonds.objects[level->diamonds.num].y = y;
+        level->diamonds.objects[level->diamonds.num].pos.x = x;
+        level->diamonds.objects[level->diamonds.num].pos.y = y;
+        level->diamonds.objects[level->diamonds.num].falling = false;
         level->diamonds.num++;
         assert(level->diamonds.num < COUNT(level->diamonds.objects));
       }
@@ -411,9 +418,9 @@ void remove_enemy(Enemies *enemies, v2 pos) {
 
 void remove_obj(Objects *objs, v2 pos) {
   for (int i = 0; i < objs->num; i++) {
-    if (objs->objects[i].x == pos.x && objs->objects[i].y == pos.y) {
-      v2 *pos = &objs->objects[i];
-      v2 *pos_lst = &objs->objects[objs->num - 1];
+    if (objs->objects[i].pos.x == pos.x && objs->objects[i].pos.y == pos.y) {
+      v2 *pos = &objs->objects[i].pos;
+      v2 *pos_lst = &objs->objects[objs->num - 1].pos;
       *pos = *pos_lst;
       objs->num -= 1;
     }
@@ -441,7 +448,7 @@ void add_lock(Lock *locks, int x, int y) {
 }
 
 void add_explosion(Level *level, v2 pos, char type) {
-  assert(type == 'f' || type == 'b');
+  assert(type == 'f' || type == 'b' || type == 'p');
 
   v2 start = sum_v2(pos, V2(-1, -1));
   v2 end = sum_v2(pos, V2(1, 1));
@@ -494,7 +501,7 @@ void add_explosion(Level *level, v2 pos, char type) {
     explosion->area = area;
     explosion->start_time = time_now();
 
-    if (type == 'f') {
+    if (type == 'f' || type == 'p') {
       explosion->duration = 4.0 / 15.0;  // NOTE: based on the animation
     } else if (type == 'b') {
       explosion->duration = 7.0 / 15.0;  // NOTE: based on the animation
@@ -518,18 +525,39 @@ void drop_objects(Level *level, char obj_sym) {
   }
 
   for (int i = 0; i < objs->num; i++) {
-    int x = objs->objects[i].x;
-    int y = objs->objects[i].y;
+    Stone *stone = &objs->objects[i];
+    int x = stone->pos.x;
+    int y = stone->pos.y;
+    bool falling = stone->falling;
+
     assert(level->tiles[y][x] == obj_sym);
 
     char tile_above = level->tiles[y - 1][x];
     char tile_under = level->tiles[y + 1][x];
 
+    // Kill enemy
+    if (tile_under == 'f' || tile_under == 'b') {
+      play_sound(SOUND_EXPLODED);
+      play_fall_sound = true;
+
+      add_explosion(level, V2(x, y + 1), tile_under);
+    }
+
+    // Kill player
+    if (falling && tile_under == 'p') {
+      play_sound(SOUND_EXPLODED);
+      play_fall_sound = true;
+
+      add_explosion(level, V2(x, y + 1), tile_under);
+    }
+
     if (tile_under == '_') {
+      stone->falling = true;
+
       // Drop down
       level->tiles[y][x] = '_';
       level->tiles[y + 1][x] = obj_sym;
-      objs->objects[i].y += 1;
+      stone->pos.y += 1;
 
       // Determine whether we play sound.
       // Check every tile below and play sound only if falling on
@@ -548,14 +576,8 @@ void drop_objects(Level *level, char obj_sym) {
         }
       }
       continue;  // don't check if we can slide
-    }
-
-    // Kill enemy
-    if (tile_under == 'f' || tile_under == 'b') {
-      play_sound(SOUND_EXPLODED);
-      play_fall_sound = true;
-
-      add_explosion(level, V2(x, y + 1), tile_under);
+    } else {
+      stone->falling = false;
     }
 
     // Slide off rocks and diamonds
@@ -566,7 +588,7 @@ void drop_objects(Level *level, char obj_sym) {
         level->tiles[y][x] = 'l';
         add_lock(level->locks, x, y);
         level->tiles[y][x - 1] = obj_sym;
-        objs->objects[i].x -= 1;
+        stone->pos.x -= 1;
         continue;
       }
       if (level->tiles[y][x + 1] == '_' && level->tiles[y + 1][x + 1] == '_') {
@@ -574,7 +596,7 @@ void drop_objects(Level *level, char obj_sym) {
         level->tiles[y][x] = 'l';
         add_lock(level->locks, x, y);
         level->tiles[y][x + 1] = obj_sym;
-        objs->objects[i].x += 1;
+        stone->pos.x += 1;
         continue;
       }
     }
@@ -969,9 +991,9 @@ StateId level_gameplay(GameState *state) {
           level->tiles[next_player_pos.y][next_player_pos.x] = 'p';
 
           for (int i = 0; i < level->rocks.num; i++) {
-            if (level->rocks.objects[i].x == next_player_pos.x &&
-                level->rocks.objects[i].y == next_player_pos.y) {
-              level->rocks.objects[i].x = rock_next_x;
+            if (level->rocks.objects[i].pos.x == next_player_pos.x &&
+                level->rocks.objects[i].pos.y == next_player_pos.y) {
+              level->rocks.objects[i].pos.x = rock_next_x;
               level->tiles[next_player_pos.y][rock_next_x] = 'r';
               break;
             }
@@ -1031,7 +1053,7 @@ StateId level_gameplay(GameState *state) {
               level->tiles[y][x] = 'd';
 
               // Add new diamond to level
-              level->diamonds.objects[level->diamonds.num++] = V2(x, y);
+              level->diamonds.objects[level->diamonds.num++].pos = V2(x, y);
               assert(level->diamonds.num < COUNT(level->diamonds.objects));
             }
           }
@@ -1084,7 +1106,7 @@ StateId level_gameplay(GameState *state) {
       if (!e->active) continue;
 
       AnimationId anim;
-      if (e->type == 'f') {
+      if (e->type == 'f' || e->type == 'p') {
         anim = ANIM_ENEMY_EXPLODED;
       } else if (e->type == 'b') {
         anim = ANIM_BUTTERFLY_EXPLODED;
