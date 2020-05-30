@@ -512,7 +512,8 @@ void add_explosion(Level *level, v2 pos, char type) {
   assert(added);
 }
 
-void drop_objects(Level *level, char obj_sym) {
+// return true if player is killed
+bool drop_objects(Level *level, char obj_sym) {
   bool play_fall_sound = false;
   Objects *objs;
 
@@ -547,8 +548,8 @@ void drop_objects(Level *level, char obj_sym) {
     if (falling && tile_under == 'p') {
       play_sound(SOUND_EXPLODED);
       play_fall_sound = true;
-
       add_explosion(level, V2(x, y + 1), tile_under);
+      return true;
     }
 
     if (tile_under == '_') {
@@ -611,6 +612,8 @@ void drop_objects(Level *level, char obj_sym) {
       diamond_sound_num = (diamond_sound_num + 1) % 7;
     }
   }
+
+  return false;
 }
 
 void draw_tile_px(DrawContext *context, v2 src, v2 dst) {
@@ -753,6 +756,32 @@ void move_viewport(Level *level, Viewport *viewport, int step) {
   }
 }
 
+void draw_explosions(Explosion *explosions, DrawContext *draw_context, Viewport *viewport) {
+  for (int i = 0; i < COUNT(&explosions); ++i) {
+    Explosion *e = &explosions[i];
+
+    if (seconds_since(e->start_time) > e->duration) {
+      e->active = false;
+    }
+    if (!e->active) continue;
+
+    AnimationId anim;
+    if (e->type == 'f' || e->type == 'p') {
+      anim = ANIM_ENEMY_EXPLODED;
+    } else if (e->type == 'b') {
+      anim = ANIM_BUTTERFLY_EXPLODED;
+    }
+
+    v2 src = get_frame_from(e->start_time, anim);
+    for (int y = e->area.top; y <= e->area.bottom; ++y) {
+      for (int x = e->area.left; x <= e->area.right; ++x) {
+        draw_tile_px(draw_context, src,
+                     V2(x * gTileSize - viewport->x, y * gTileSize - viewport->y));
+      }
+    }
+  }
+}
+
 void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
   for (int y = 0; y < viewport->height; y++) {
     for (int x = 0; x < viewport->width; x++) {
@@ -878,6 +907,27 @@ StateId level_ending(GameState *state) {
   state->level_id++;
   if (state->level_id >= sizeof(gLevels)) {
     return QUIT_GAME;  // TODO; you won!
+  }
+  return LEVEL_STARTING;
+}
+
+StateId player_dying(GameState *state) {
+  Level *level = &state->level;
+  DrawContext *draw_context = &state->draw_context;
+  Input input = {};
+  u64 start = time_now();
+
+  while (seconds_since(start) < 1.5) {
+    draw_level(level->tiles, draw_context, &state->viewport);
+    draw_explosions(level->explosions, draw_context, &state->viewport);
+    draw_status_bar(state);
+
+    process_input(&input);
+    if (input.quit) {
+      return QUIT_GAME;
+    }
+
+    update_screen(draw_context);
   }
   return LEVEL_STARTING;
 }
@@ -1021,8 +1071,9 @@ StateId level_gameplay(GameState *state) {
     // Drop rocks and diamonds
     if (seconds_since(drop_last_time) > kDropDelay) {
       drop_last_time = time_now();
-      drop_objects(level, 'r');
-      drop_objects(level, 'd');
+      if (drop_objects(level, 'r') || drop_objects(level, 'd')) {
+        return PLAYER_DYING;
+      }
 
       // Clear locks
       for (int i = 0; i < COUNT(level->locks); i++) {
@@ -1101,25 +1152,7 @@ StateId level_gameplay(GameState *state) {
     }
 
     // Draw explosions
-    for (int i = 0; i < COUNT(level->explosions); ++i) {
-      Explosion *e = &level->explosions[i];
-      if (!e->active) continue;
-
-      AnimationId anim;
-      if (e->type == 'f' || e->type == 'p') {
-        anim = ANIM_ENEMY_EXPLODED;
-      } else if (e->type == 'b') {
-        anim = ANIM_BUTTERFLY_EXPLODED;
-      }
-
-      v2 src = get_frame_from(e->start_time, anim);
-      for (int y = e->area.top; y <= e->area.bottom; ++y) {
-        for (int x = e->area.left; x <= e->area.right; ++x) {
-          draw_tile_px(draw_context, src,
-                       V2(x * gTileSize - viewport->x, y * gTileSize - viewport->y));
-        }
-      }
-    }
+    draw_explosions(level->explosions, draw_context, viewport);
 
     // Time left
     level->time_left = level_time - (int)(seconds_since(start));
@@ -1238,6 +1271,9 @@ int main() {
       } break;
       case LEVEL_ENDING: {
         state.state_id = level_ending(&state);
+      } break;
+      case PLAYER_DYING: {
+        state.state_id = player_dying(&state);
       } break;
       case QUIT_GAME: {
         is_running = false;
