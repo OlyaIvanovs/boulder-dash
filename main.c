@@ -360,49 +360,10 @@ bool enemy_can_move(Level *level, v2 pos) {
     return false;
   }
   char tile_type = level->tiles[pos.y][pos.x];
-  if (tile_type == '_' || tile_type == ' ') {
+  if (tile_type == '_' || tile_type == ' ' || tile_type == 'p') {
     return true;
   }
   return false;
-}
-
-void move_enemies(Level *level, char obj_sym) {
-  Enemies *enemies;
-
-  if (obj_sym == 'f') {
-    enemies = &level->enemies;
-  } else if (obj_sym == 'b') {
-    enemies = &level->butterflies;
-  } else {
-    assert(!"Unknown obj sym");
-  }
-
-  for (int i = 0; i < enemies->num; ++i) {
-    Enemy *enemy = &enemies->objects[i];
-
-    assert(level->tiles[enemy->pos.y][enemy->pos.x] == obj_sym);
-    level->tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
-
-    v2 pos_forward = sum_v2(enemy->pos, enemy->direction);
-    v2 pos_right = sum_v2(enemy->pos, turn_right(enemy->direction));
-    v2 pos_right_diag = sum_v2(pos_right, V2(-enemy->direction.x, -enemy->direction.y));
-
-    if (enemy_can_move(level, pos_right) &&
-        level->tiles[pos_right_diag.y][pos_right_diag.x] != '_') {
-      // Turn and move right
-      enemy->pos = pos_right;
-      enemy->direction = turn_right(enemy->direction);
-    } else if (enemy_can_move(level, pos_forward)) {
-      // Move forward
-      enemy->pos = pos_forward;
-    } else {
-      // Turn left in place
-      enemy->direction = turn_left(enemy->direction);
-      enemy->pos = enemy->pos;
-    }
-
-    level->tiles[enemy->pos.y][enemy->pos.x] = obj_sym;  // "draw"
-  }
 }
 
 void remove_enemy(Enemies *enemies, v2 pos) {
@@ -425,26 +386,6 @@ void remove_obj(Objects *objs, v2 pos) {
       objs->num -= 1;
     }
   }
-}
-
-bool can_move_rock(Level *level, v2 pos, v2 next_pos) {
-  if (((pos.x < next_pos.x) && (level->tiles[pos.y][next_pos.x + 1] == '_')) ||
-      ((pos.x > next_pos.x) && (level->tiles[pos.y][next_pos.x - 1] == '_'))) {
-    return true;
-  }
-  return false;
-}
-
-void add_lock(Lock *locks, int x, int y) {
-  for (int i = 0; i < sizeof(&locks); i++) {
-    if (locks[i].lifetime == 0) {
-      locks[i].lifetime = 2;
-      locks[i].pos.x = x;
-      locks[i].pos.y = y;
-      return;
-    }
-  }
-  assert(!"Not enough space for locks");
 }
 
 void add_explosion(Level *level, v2 pos, char type) {
@@ -510,6 +451,74 @@ void add_explosion(Level *level, v2 pos, char type) {
     break;
   }
   assert(added);
+}
+
+// Return True if enemy kills player
+bool move_enemies(Level *level, char obj_sym) {
+  Enemies *enemies;
+
+  if (obj_sym == 'f') {
+    enemies = &level->enemies;
+  } else if (obj_sym == 'b') {
+    enemies = &level->butterflies;
+  } else {
+    assert(!"Unknown obj sym");
+  }
+
+  for (int i = 0; i < enemies->num; ++i) {
+    Enemy *enemy = &enemies->objects[i];
+
+    assert(level->tiles[enemy->pos.y][enemy->pos.x] == obj_sym);
+    level->tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
+
+    v2 pos_forward = sum_v2(enemy->pos, enemy->direction);
+    v2 pos_right = sum_v2(enemy->pos, turn_right(enemy->direction));
+    v2 pos_right_diag = sum_v2(pos_right, V2(-enemy->direction.x, -enemy->direction.y));
+
+    if (enemy_can_move(level, pos_right) &&
+        level->tiles[pos_right_diag.y][pos_right_diag.x] != '_') {
+      // Turn and move right
+      enemy->pos = pos_right;
+      enemy->direction = turn_right(enemy->direction);
+    } else if (enemy_can_move(level, pos_forward)) {
+      // Move forward
+      enemy->pos = pos_forward;
+    } else {
+      // Turn left in place
+      enemy->direction = turn_left(enemy->direction);
+      enemy->pos = enemy->pos;
+    }
+
+    if (level->tiles[enemy->pos.y][enemy->pos.x] == 'p') {
+      play_sound(SOUND_EXPLODED);
+      add_explosion(level, V2(enemy->pos.x, enemy->pos.y), 'p');
+      return true;
+    }
+
+    level->tiles[enemy->pos.y][enemy->pos.x] = obj_sym;  // "draw"
+  }
+
+  return false;
+}
+
+bool can_move_rock(Level *level, v2 pos, v2 next_pos) {
+  if (((pos.x < next_pos.x) && (level->tiles[pos.y][next_pos.x + 1] == '_')) ||
+      ((pos.x > next_pos.x) && (level->tiles[pos.y][next_pos.x - 1] == '_'))) {
+    return true;
+  }
+  return false;
+}
+
+void add_lock(Lock *locks, int x, int y) {
+  for (int i = 0; i < sizeof(&locks); i++) {
+    if (locks[i].lifetime == 0) {
+      locks[i].lifetime = 2;
+      locks[i].pos.x = x;
+      locks[i].pos.y = y;
+      return;
+    }
+  }
+  assert(!"Not enough space for locks");
 }
 
 // return true if player is killed
@@ -1064,8 +1073,13 @@ StateId level_gameplay(GameState *state) {
     if (seconds_since(enemy_last_move_time) > kEnemyMoveDelay) {
       enemy_last_move_time = time_now();
 
-      move_enemies(level, 'f');
-      move_enemies(level, 'b');
+      if (move_enemies(level, 'f')) {
+        return PLAYER_DYING;
+      }
+
+      if (move_enemies(level, 'b')) {
+        return PLAYER_DYING;
+      }
     }
 
     // Drop rocks and diamonds
