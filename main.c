@@ -22,6 +22,7 @@ typedef enum StateId {
   LEVEL_GAMEPLAY,
   LEVEL_ENDING,
   PLAYER_DYING,
+  OUT_OF_TIME,
   YOU_WIN,
   QUIT_GAME,
 } StateId;
@@ -299,7 +300,8 @@ void load_level(Level *level, int num_level) {
     }
   }
 
-  level->time_left = 150;
+  // level->time_left = 150;
+  level->time_left = 5;
   level->score_per_diamond = 10;
   level->min_diamonds = (level->diamonds.num + level->butterflies.num * 9) / 6;
   level->diamonds_collected = 0;
@@ -675,6 +677,16 @@ void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_dig
   }
 }
 
+void draw_character(DrawContext *context, v2 pos, char letter) {
+  int num_letter = tolower(letter) - tolower('a');
+  v2 src = {288, 529 + num_letter * 16};
+  v2 dst = {pos.x, pos.y};
+  SDL_Rect src_rect = {src.x, src.y, 32, 16};
+  SDL_Rect dst_rect = {context->window_offset.x + dst.x, context->window_offset.y + dst.y,
+                       gTileSize, gTileSize};
+  SDL_RenderCopy(context->renderer, context->texture, &src_rect, &dst_rect);
+}
+
 void draw_status_bar(GameState *state) {
   Viewport *viewport = &state->viewport;
   DrawContext *draw_context = &state->draw_context;
@@ -683,6 +695,16 @@ void draw_status_bar(GameState *state) {
   // Draw status bar's background black
   for (int x = 0; x < (viewport->width - 1); x++) {
     draw_tile(draw_context, V2(128, 0), V2(x, 0));
+  }
+
+  if (state->state_id == OUT_OF_TIME) {
+    // Write 'Out of time'
+    int start = 10;
+    char text[11] = "OUT OF TIME";
+    for (int i = 0; i < sizeof(text); i++) {
+      draw_character(draw_context, V2((start + i) * gTileSize, 0), text[i]);
+    }
+    return;
   }
 
   // Display overall score
@@ -926,7 +948,7 @@ StateId player_dying(GameState *state) {
   Input input = {};
   u64 start = time_now();
 
-  while (seconds_since(start) < 1.5) {
+  while (seconds_since(start) < 2.5) {
     draw_level(level->tiles, draw_context, &state->viewport);
     draw_explosions(level->explosions, draw_context, &state->viewport);
     draw_status_bar(state);
@@ -939,6 +961,10 @@ StateId player_dying(GameState *state) {
     update_screen(draw_context);
   }
   return LEVEL_STARTING;
+}
+
+StateId out_of_time(GameState *state) {
+  return player_dying(state);
 }
 
 StateId level_gameplay(GameState *state) {
@@ -1170,8 +1196,10 @@ StateId level_gameplay(GameState *state) {
 
     // Time left
     level->time_left = level_time - (int)(seconds_since(start));
+    // Time is over
     if (level->time_left < 0) {
       level->time_left = 0;
+      return OUT_OF_TIME;
     }
 
     draw_status_bar(state);
@@ -1288,6 +1316,9 @@ int main() {
       } break;
       case PLAYER_DYING: {
         state.state_id = player_dying(&state);
+      } break;
+      case OUT_OF_TIME: {
+        state.state_id = out_of_time(&state);
       } break;
       case QUIT_GAME: {
         is_running = false;
