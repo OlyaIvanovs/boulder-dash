@@ -300,10 +300,9 @@ void load_level(Level *level, int num_level) {
     }
   }
 
-  // level->time_left = 150;
   level->time_left = 150;
   level->score_per_diamond = 10;
-  level->min_diamonds = (level->diamonds.num + level->butterflies.num * 9) / 6;
+  level->min_diamonds = gLevel_min_diamonds[num_level];
   level->diamonds_collected = 0;
 }
 
@@ -1294,7 +1293,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 0;
+  state.level_id = 1;
   state.draw_context = draw_context;
   state.viewport = viewport;
   state.state_id = LEVEL_STARTING;
