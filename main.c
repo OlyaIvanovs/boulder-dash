@@ -301,7 +301,7 @@ void load_level(Level *level, int num_level) {
   }
 
   // level->time_left = 150;
-  level->time_left = 5;
+  level->time_left = 150;
   level->score_per_diamond = 10;
   level->min_diamonds = (level->diamonds.num + level->butterflies.num * 9) / 6;
   level->diamonds_collected = 0;
@@ -523,7 +523,7 @@ void add_lock(Lock *locks, int x, int y) {
   assert(!"Not enough space for locks");
 }
 
-// return true if player is killed
+// Returns true if player is killed
 bool drop_objects(Level *level, char obj_sym) {
   bool play_fall_sound = false;
   Objects *objs;
@@ -677,7 +677,7 @@ void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_dig
   }
 }
 
-void draw_character(DrawContext *context, v2 pos, char letter) {
+void draw_char(DrawContext *context, v2 pos, char letter) {
   int num_letter = tolower(letter) - tolower('a');
   v2 src = {288, 529 + num_letter * 16};
   v2 dst = {pos.x, pos.y};
@@ -702,7 +702,7 @@ void draw_status_bar(GameState *state) {
     int start = 10;
     char text[11] = "OUT OF TIME";
     for (int i = 0; i < sizeof(text); i++) {
-      draw_character(draw_context, V2((start + i) * gTileSize, 0), text[i]);
+      draw_char(draw_context, V2((start + i) * gTileSize, 0), text[i]);
     }
     return;
   }
@@ -908,7 +908,7 @@ StateId level_starting(GameState *state) {
 }
 
 StateId level_ending(GameState *state) {
-  const double kScorePlusDelay = 0.04;
+  const double kScorePlusDelay = 0.02;
   Level *level = &state->level;
   DrawContext *draw_context = &state->draw_context;
   Input input = {};
@@ -1099,11 +1099,8 @@ StateId level_gameplay(GameState *state) {
     if (seconds_since(enemy_last_move_time) > kEnemyMoveDelay) {
       enemy_last_move_time = time_now();
 
-      if (move_enemies(level, 'f')) {
-        return PLAYER_DYING;
-      }
-
-      if (move_enemies(level, 'b')) {
+      bool player_killed = move_enemies(level, 'f') || move_enemies(level, 'b');
+      if (player_killed) {
         return PLAYER_DYING;
       }
     }
