@@ -42,6 +42,7 @@ typedef struct {
 
   bool quit;
   bool reset;
+  bool pickup;  // collect diamond without moving with Ctrl
 } Input;
 
 typedef struct {
@@ -220,6 +221,7 @@ void process_input(Input *input) {
         input->quit = true;
       }
     }
+
     if (event.type == SDL_KEYDOWN) {
       if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
         input->right = true;
@@ -232,6 +234,9 @@ void process_input(Input *input) {
       }
       if (event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
         input->down = true;
+      }
+      if (event.key.keysym.scancode == SDL_SCANCODE_LCTRL) {
+        input->pickup = true;
       }
     }
 
@@ -250,6 +255,9 @@ void process_input(Input *input) {
       }
       if (event.key.keysym.sym == 'r') {
         input->reset = true;
+      }
+      if (event.key.keysym.scancode == SDL_SCANCODE_LCTRL) {
+        input->pickup = false;
       }
     }
   }
@@ -1012,6 +1020,7 @@ StateId level_gameplay(GameState *state) {
       } else if (input.down) {
         next_player_pos.y += 1;
       }
+
       char next_tile = level->tiles[next_player_pos.y][next_player_pos.x];
       if (can_move(level, next_player_pos)) {
         if (next_tile == 'd') {
@@ -1052,9 +1061,13 @@ StateId level_gameplay(GameState *state) {
           walking_sound_cooldown = 1;
         }
 
-        level->tiles[level->player_pos.y][level->player_pos.x] = '_';
-        level->tiles[next_player_pos.y][next_player_pos.x] = 'p';
-        level->player_pos = next_player_pos;
+        if (input.pickup && next_tile == 'd') {  // collect diamond without moving with Ctrl
+          level->tiles[next_player_pos.y][next_player_pos.x] = '_';
+        } else {
+          level->tiles[level->player_pos.y][level->player_pos.x] = '_';
+          level->tiles[next_player_pos.y][next_player_pos.x] = 'p';
+          level->player_pos = next_player_pos;
+        }
         player_last_move_time = time_now();
       }
 
