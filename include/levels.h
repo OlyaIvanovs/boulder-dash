@@ -517,3 +517,7 @@ static char *gLevels[20] = {
     (char *)cave_11, (char *)cave_12, (char *)cave_13, (char *)cave_14, (char *)cave_15,
     (char *)cave_16, (char *)cave_17, (char *)cave_18, (char *)cave_19, (char *)cave_20,
 };
+
+// Level >= 10 check later
+static int gLevel_min_diamonds[20] = {6, 4, 8, 18, 9, 4, 4, 3, 15, 10,
+                                      5, 5, 5, 5,  5, 5, 5, 5, 5,  5};

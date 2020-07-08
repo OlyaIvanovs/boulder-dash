@@ -1061,9 +1061,13 @@ StateId level_gameplay(GameState *state) {
           walking_sound_cooldown = 1;
         }
 
-        if (input.pickup && next_tile == 'd') {  // collect diamond without moving with Ctrl
-          level->tiles[next_player_pos.y][next_player_pos.x] = '_';
+        if (input.pickup) {
+          // collect diamond without moving with Ctrl
+          if (next_tile == 'd') {
+            level->tiles[next_player_pos.y][next_player_pos.x] = '_';
+          }
         } else {
+          // move player
           level->tiles[level->player_pos.y][level->player_pos.x] = '_';
           level->tiles[next_player_pos.y][next_player_pos.x] = 'p';
           level->player_pos = next_player_pos;
