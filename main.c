@@ -81,6 +81,11 @@ typedef struct Objects {
   int num;
 } Objects;
 
+typedef struct Waters {
+  v2 pos[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
+  int num;
+} Waters;
+
 typedef struct {
   v2 pos;
   int lifetime;
@@ -133,6 +138,7 @@ typedef struct Level {
   Enemies butterflies;
   Lock locks[10];
   Explosion explosions[5];
+  Waters waters;
   v2 player_pos;  // in tiles
   v2 enemy_pos;
   int time_left;
@@ -168,6 +174,7 @@ typedef enum AnimationId {
   ANIM_IDLE3,
   ANIM_EXIT,
   ANIM_PLAYER_HERE,
+  ANIM_WATER,
 
   ANIM_COUNT,
 } AnimationId;
@@ -196,6 +203,7 @@ Animation gAnimations[ANIM_COUNT] = {
     {{0, 98}, 0, 8, 10, 0},    // ANIM_IDLE3,
     {{32, 192}, 0, 2, 4, 0},   // ANIM_EXIT,
     {{32, 0}, 0, 3, 3, 0},     // ANIM_PLAYER_HERE,
+    {{0, 256}, 0, 8, 25, 0},   // ANIM_WATER,
 };
 
 int gTileSize;
@@ -263,6 +271,13 @@ void process_input(Input *input) {
   }
 }
 
+void add_water(Level *level, int x, int y) {
+  level->waters.pos[level->waters.num].x = x;
+  level->waters.pos[level->waters.num].y = y;
+  level->waters.num++;
+  level->tiles[y][x] = 'a';
+}
+
 void load_level(Level *level, int num_level) {
   SDL_memset(level, 0, sizeof(*level));
   SDL_memcpy(level->tiles, gLevels[num_level], LEVEL_HEIGHT * LEVEL_WIDTH);
@@ -304,6 +319,10 @@ void load_level(Level *level, int num_level) {
         level->diamonds.objects[level->diamonds.num].falling = false;
         level->diamonds.num++;
         assert(level->diamonds.num < COUNT(level->diamonds.objects));
+      }
+
+      if (level->tiles[y][x] == 'a') {
+        add_water(level, x, y);
       }
     }
   }
@@ -352,8 +371,12 @@ v2 turn_left(v2 direction) {
   return V2(direction.y, -direction.x);
 }
 
+bool out_of_bounds(v2 pos) {
+  return (pos.x < 0 || pos.x >= LEVEL_WIDTH || pos.y < 0 || pos.y >= LEVEL_HEIGHT);
+}
+
 bool can_move(Level *level, v2 pos) {
-  if (pos.x < 0 || pos.x >= LEVEL_WIDTH || pos.y < 0 || pos.y >= LEVEL_HEIGHT) {
+  if (out_of_bounds(pos)) {
     return false;
   }
   char tile_type = level->tiles[pos.y][pos.x];
@@ -365,7 +388,7 @@ bool can_move(Level *level, v2 pos) {
 }
 
 bool enemy_can_move(Level *level, v2 pos) {
-  if (pos.x < 0 || pos.x >= LEVEL_WIDTH || pos.y < 0 || pos.y >= LEVEL_HEIGHT) {
+  if (out_of_bounds(pos)) {
     return false;
   }
   char tile_type = level->tiles[pos.y][pos.x];
@@ -528,6 +551,12 @@ void add_lock(Lock *locks, int x, int y) {
     }
   }
   assert(!"Not enough space for locks");
+}
+
+void add_diamond(Level *level, int x, int y) {
+  level->tiles[y][x] = 'd';
+  level->diamonds.objects[level->diamonds.num++].pos = V2(x, y);
+  assert(level->diamonds.num < COUNT(level->diamonds.objects));
 }
 
 // Returns true if player is killed
@@ -855,6 +884,8 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
         src = get_frame(ANIM_EXIT);
       } else if (tile_type == 'S') {
         src = get_frame(ANIM_PLAYER_HERE);
+      } else if (tile_type == 'a') {
+        src = get_frame(ANIM_WATER);
       }
 
       draw_tile_px(draw_context, src, dst);
@@ -987,9 +1018,11 @@ StateId level_gameplay(GameState *state) {
   int walking_sound_cooldown = 1;
   u64 drop_last_time = start;
   u64 enemy_last_move_time = start;
+  u64 flooding_last_time = start;
   const double kPlayerDelay = 0.1;
   const double kDropDelay = 0.15;
   const double kEnemyMoveDelay = 0.15;
+  const double kFloodingDelay = 1.25;
 
   AnimationId player_animation = ANIM_IDLE1;
   AnimationId previos_direction_anim = ANIM_GO_RIGHT;
@@ -1111,6 +1144,41 @@ StateId level_gameplay(GameState *state) {
 
     move_viewport(level, viewport, gTileSize);
 
+    // Flooding
+    if (level->waters.num > 0 && seconds_since(flooding_last_time) > kFloodingDelay) {
+      flooding_last_time = time_now();
+
+      bool expanded = false;
+      for (int i = 0; i < level->waters.num; i++) {
+        v2 water_pos = level->waters.pos[i];
+
+        v2 neighbours[4] = {
+            sum_v2(water_pos, V2(-1, 0)),
+            sum_v2(water_pos, V2(1, 0)),
+            sum_v2(water_pos, V2(0, -1)),
+            sum_v2(water_pos, V2(0, 1)),
+        };
+
+        for (int j = 0; j < 4; j++) {
+          v2 pos = neighbours[j];
+          if (out_of_bounds(pos)) continue;
+          char tile = level->tiles[pos.y][pos.x];
+          if (tile == '_' || tile == '.') {
+            add_water(level, pos.x, pos.y);
+            expanded = true;
+            break;
+          }
+        }
+        if (expanded) break;  // only add one tile of water at a time
+      }
+      if (!expanded) {
+        for (int i = 0; i < level->waters.num; i++) {
+          add_diamond(level, level->waters.pos[i].x, level->waters.pos[i].y);
+        }
+        level->waters.num = 0;  // disable flooding
+      }
+    }
+
     // Move enemy
     if (seconds_since(enemy_last_move_time) > kEnemyMoveDelay) {
       enemy_last_move_time = time_now();
@@ -1154,11 +1222,10 @@ StateId level_gameplay(GameState *state) {
             if (e->type == 'f') {
               level->tiles[y][x] = '_';
             } else if (e->type == 'b') {
-              level->tiles[y][x] = 'd';
-
-              // Add new diamond to level
-              level->diamonds.objects[level->diamonds.num++].pos = V2(x, y);
-              assert(level->diamonds.num < COUNT(level->diamonds.objects));
+              add_diamond(level, x, y);
+              // level->tiles[y][x] = 'd';
+              // level->diamonds.objects[level->diamonds.num++].pos = V2(x, y);
+              // assert(level->diamonds.num < COUNT(level->diamonds.objects));
             }
           }
         }
@@ -1310,7 +1377,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 1;
+  state.level_id = 7;
   state.draw_context = draw_context;
   state.viewport = viewport;
   state.state_id = LEVEL_STARTING;
