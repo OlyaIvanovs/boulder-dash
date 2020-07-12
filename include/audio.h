@@ -35,21 +35,9 @@ typedef enum SoundId {
   SOUND_MAGIC_WALL,
 } SoundId;
 
-typedef struct Sound {
-  short *samples;
-  int len_samples;
-} Sound;
-
-typedef struct {
-  short *start;
-  int cursor;
-  int size;  // in samples
-  u64 start_time;
-  SDL_AudioDeviceID audio_device_id;
-  double len_in_seconds;
-} AudioBuffer;
-
 SDL_AudioDeviceID init_audio();
 void play_sound(SoundId);
+void play_looped_sound(SoundId);
+void stop_looped_sounds();
 
 #endif  // AUDIO_H

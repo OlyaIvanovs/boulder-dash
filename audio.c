@@ -1,6 +1,36 @@
 #include "audio.h"
 
+#include <assert.h>
+#include <stdio.h>
+
 #include "lib/stb_vorbis.c"
+
+typedef struct Sound {
+  short *samples;
+  int len_samples;
+} Sound;
+
+typedef struct {
+  short *start;
+  int cursor;
+  int size;  // in samples
+  u64 start_time;
+  SDL_AudioDeviceID audio_device_id;
+  double len_in_seconds;
+} AudioBuffer;
+
+typedef struct LoopedSound {
+  short *samples;
+  int len_bytes;
+  int read_cursor;
+} LoopedSound;
+
+typedef struct LoopedSounds {
+  LoopedSound sounds[10];
+  int num;
+} LoopedSounds;
+
+static LoopedSounds gLoopedSounds = {};
 
 // Both will be initialised by init_audio()
 static Sound *gSounds;
@@ -43,7 +73,7 @@ Sound *load_all_sounds() {
       sound->samples = new_samples;
     }
     assert(channels <= 2);
-    assert(sample_rate == 44100);
+    assert(sample_rate == 44100);  // samples in 1 sec
   }
 
   return sounds;
@@ -55,11 +85,71 @@ void audio_callback(void *userdata, u8 *stream, int len) {
   if (buffer->start_time == 0) {
     buffer->start_time = time_now();  // for the first call
   }
+
+  // Copy the data from the single-sound buffer
   SDL_memcpy(stream, buffer->start + buffer->cursor, len);
   SDL_memset(buffer->start + buffer->cursor, 0, len);
+
+  // Mix in any looped sounds currently being played
+  for (int i = 0; i < gLoopedSounds.num; i++) {
+    LoopedSound *sound = &gLoopedSounds.sounds[i];
+    assert(sound->len_bytes >= len);  // we don't support short sounds for loops
+
+    u8 *src = (u8 *)sound->samples + sound->read_cursor;
+
+    if (sound->read_cursor + len <= sound->len_bytes) {
+      // No wrapping needed
+      SDL_MixAudioFormat(stream, src, AUDIO_S16, len, SDL_MIX_MAXVOLUME);
+    } else {
+      // Need to wrap and copy in 2 chunks
+      int chunk1 = sound->len_bytes - sound->read_cursor;
+      int chunk2 = len - chunk1;
+      SDL_MixAudioFormat(stream, src, AUDIO_S16, chunk1, SDL_MIX_MAXVOLUME);
+      SDL_MixAudioFormat(stream + chunk1, (u8 *)sound->samples, AUDIO_S16, chunk2,
+                         SDL_MIX_MAXVOLUME);
+    }
+    sound->read_cursor = (sound->read_cursor + len) % sound->len_bytes;
+  }
+
   buffer->cursor += len / sizeof(short);
   buffer->cursor %= buffer->size;
 }
+
+// void audio_callback_old(void *userdata, u8 *stream, int len) {
+//   AudioBuffer *buffer = &gBuffer;
+//   assert((buffer->size * sizeof(short)) % len == 0);
+//   if (buffer->start_time == 0) {
+//     buffer->start_time = time_now();  // for the first call
+//   }
+
+//   // Copy the data from the single-sound buffer
+//   SDL_memcpy(stream, buffer->start + buffer->cursor, len);
+//   SDL_memset(buffer->start + buffer->cursor, 0, len);
+
+//   // Mix in any looped sounds currently being played
+//   for (int i = 0; i < gLoopedSounds.num; i++) {
+//     LoopedSound *looped_sound = &gLoopedSounds.sounds[i];
+//     int chunk1_len = looped_sound->len_samples * sizeof(short) - looped_sound->read_cursor;
+//     int chunk2_len = len - chunk1_len;
+//     if (chunk1_len < len) {
+//       SDL_MixAudioFormat(stream,
+//                          (u8 *)(looped_sound->samples + looped_sound->read_cursor /
+//                          sizeof(short)), AUDIO_S16, chunk1_len, SDL_MIX_MAXVOLUME);
+//       SDL_MixAudioFormat((u8 *)(stream + chunk1_len), (u8 *)(looped_sound->samples), AUDIO_S16,
+//                          chunk2_len, SDL_MIX_MAXVOLUME);
+//       looped_sound->read_cursor = chunk2_len;
+//     } else {
+//       SDL_MixAudioFormat(stream,
+//                          (u8 *)(looped_sound->samples + looped_sound->read_cursor /
+//                          sizeof(short)), AUDIO_S16, len, SDL_MIX_MAXVOLUME);
+//       looped_sound->read_cursor += len;
+//     }
+//     looped_sound->read_cursor %= looped_sound->len_samples;
+//   }
+
+//   buffer->cursor += len / sizeof(short);
+//   buffer->cursor %= buffer->size;
+// }
 
 void play_sound(SoundId sound_id) {
   AudioBuffer *buffer = &gBuffer;
@@ -88,15 +178,30 @@ void play_sound(SoundId sound_id) {
   SDL_UnlockAudioDevice(buffer->audio_device_id);
 }
 
+void play_looped_sound(SoundId sound_id) {
+  Sound sound = gSounds[sound_id];
+  LoopedSound lSound;
+  lSound.samples = sound.samples;
+  lSound.len_bytes = sound.len_samples * sizeof(short);
+  lSound.read_cursor = 0;
+  gLoopedSounds.sounds[gLoopedSounds.num] = lSound;
+  gLoopedSounds.num++;
+}
+
+void stop_looped_sounds() {
+  gLoopedSounds.num = 0;
+}
+
 // Returns audiodevice id on success, returns 0 on error
 SDL_AudioDeviceID init_audio() {
   gSounds = load_all_sounds();
 
-  const int kFrequency = 44100;  // Sample frames per second
+  const int kFrequency = 44100;  // Sample frames per second (sample_rate)
   const int kChannels = 2;
   const int kCallbackSampleFrames = 2048;
   const int kCallbackBuffersPerMinute =
-      (int)(((double)kFrequency / (double)kCallbackSampleFrames) * 30.0);  // approximately
+      (int)(((double)kFrequency / (double)(kCallbackSampleFrames * kChannels)) *
+            60.0);  // approximately
 
   // Create audio device
   SDL_AudioSpec desired_audiospec = {};

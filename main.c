@@ -954,6 +954,7 @@ StateId level_ending(GameState *state) {
   u64 score_plus_last_time = start;
 
   play_sound(SOUND_FINISHED);
+  stop_looped_sounds();
 
   while ((seconds_since(start) < 3.0) || (level->time_left > 0)) {
     draw_level(level->tiles, draw_context, &state->viewport);
@@ -985,6 +986,7 @@ StateId player_dying(GameState *state) {
   DrawContext *draw_context = &state->draw_context;
   Input input = {};
   u64 start = time_now();
+  stop_looped_sounds();
 
   while (seconds_since(start) < 2.5) {
     draw_level(level->tiles, draw_context, &state->viewport);
@@ -1011,6 +1013,7 @@ StateId level_gameplay(GameState *state) {
   DrawContext *draw_context = &state->draw_context;
 
   bool rock_is_pushed = false;
+  bool play_sound_water = false;
   u64 start = time_now();
   int level_time = level->time_left;
   u64 rock_start_move_time = start;
@@ -1147,6 +1150,10 @@ StateId level_gameplay(GameState *state) {
     // Flooding
     if (level->waters.num > 0 && seconds_since(flooding_last_time) > kFloodingDelay) {
       flooding_last_time = time_now();
+      if (!play_sound_water) {
+        play_looped_sound(SOUND_AMOEBA);
+        play_sound_water = true;
+      }
 
       bool expanded = false;
       for (int i = 0; i < level->waters.num; i++) {
