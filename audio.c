@@ -114,43 +114,6 @@ void audio_callback(void *userdata, u8 *stream, int len) {
   buffer->cursor += len / sizeof(short);
   buffer->cursor %= buffer->size;
 }
-
-// void audio_callback_old(void *userdata, u8 *stream, int len) {
-//   AudioBuffer *buffer = &gBuffer;
-//   assert((buffer->size * sizeof(short)) % len == 0);
-//   if (buffer->start_time == 0) {
-//     buffer->start_time = time_now();  // for the first call
-//   }
-
-//   // Copy the data from the single-sound buffer
-//   SDL_memcpy(stream, buffer->start + buffer->cursor, len);
-//   SDL_memset(buffer->start + buffer->cursor, 0, len);
-
-//   // Mix in any looped sounds currently being played
-//   for (int i = 0; i < gLoopedSounds.num; i++) {
-//     LoopedSound *looped_sound = &gLoopedSounds.sounds[i];
-//     int chunk1_len = looped_sound->len_samples * sizeof(short) - looped_sound->read_cursor;
-//     int chunk2_len = len - chunk1_len;
-//     if (chunk1_len < len) {
-//       SDL_MixAudioFormat(stream,
-//                          (u8 *)(looped_sound->samples + looped_sound->read_cursor /
-//                          sizeof(short)), AUDIO_S16, chunk1_len, SDL_MIX_MAXVOLUME);
-//       SDL_MixAudioFormat((u8 *)(stream + chunk1_len), (u8 *)(looped_sound->samples), AUDIO_S16,
-//                          chunk2_len, SDL_MIX_MAXVOLUME);
-//       looped_sound->read_cursor = chunk2_len;
-//     } else {
-//       SDL_MixAudioFormat(stream,
-//                          (u8 *)(looped_sound->samples + looped_sound->read_cursor /
-//                          sizeof(short)), AUDIO_S16, len, SDL_MIX_MAXVOLUME);
-//       looped_sound->read_cursor += len;
-//     }
-//     looped_sound->read_cursor %= looped_sound->len_samples;
-//   }
-
-//   buffer->cursor += len / sizeof(short);
-//   buffer->cursor %= buffer->size;
-// }
-
 void play_sound(SoundId sound_id) {
   AudioBuffer *buffer = &gBuffer;
   Sound sound = gSounds[sound_id];
