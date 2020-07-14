@@ -99,14 +99,14 @@ void audio_callback(void *userdata, u8 *stream, int len) {
 
     if (sound->read_cursor + len <= sound->len_bytes) {
       // No wrapping needed
-      SDL_MixAudioFormat(stream, src, AUDIO_S16, len, SDL_MIX_MAXVOLUME);
+      SDL_MixAudioFormat(stream, src, AUDIO_S16, len, SDL_MIX_MAXVOLUME / 2);
     } else {
       // Need to wrap and copy in 2 chunks
       int chunk1 = sound->len_bytes - sound->read_cursor;
       int chunk2 = len - chunk1;
-      SDL_MixAudioFormat(stream, src, AUDIO_S16, chunk1, SDL_MIX_MAXVOLUME);
+      SDL_MixAudioFormat(stream, src, AUDIO_S16, chunk1, SDL_MIX_MAXVOLUME / 2);
       SDL_MixAudioFormat(stream + chunk1, (u8 *)sound->samples, AUDIO_S16, chunk2,
-                         SDL_MIX_MAXVOLUME);
+                         SDL_MIX_MAXVOLUME / 2);
     }
     sound->read_cursor = (sound->read_cursor + len) % sound->len_bytes;
   }

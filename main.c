@@ -101,6 +101,13 @@ typedef struct Enemies {
   int num;
 } Enemies;
 
+typedef struct MagicWall {
+  v2 bricks[20];
+  u64 start_time;
+  int num;
+  bool is_on;
+} MagicWall;
+
 typedef struct {
   v2 start_frame;
   u64 start_time;
@@ -141,6 +148,7 @@ typedef struct Level {
   Waters waters;
   v2 player_pos;  // in tiles
   v2 enemy_pos;
+  MagicWall magic_wall;
   int time_left;
   int score_per_diamond;
   int min_diamonds;
@@ -175,6 +183,7 @@ typedef enum AnimationId {
   ANIM_EXIT,
   ANIM_PLAYER_HERE,
   ANIM_WATER,
+  ANIM_MAGIC_WALL,
 
   ANIM_COUNT,
 } AnimationId;
@@ -204,6 +213,7 @@ Animation gAnimations[ANIM_COUNT] = {
     {{32, 192}, 0, 2, 4, 0},   // ANIM_EXIT,
     {{32, 0}, 0, 3, 3, 0},     // ANIM_PLAYER_HERE,
     {{0, 256}, 0, 8, 25, 0},   // ANIM_WATER,
+    {{96, 192}, 0, 5, 20, 0},  // ANIM_MAGIC_WALL,
 };
 
 int gTileSize;
@@ -282,6 +292,9 @@ void load_level(Level *level, int num_level) {
   SDL_memset(level, 0, sizeof(*level));
   SDL_memcpy(level->tiles, gLevels[num_level], LEVEL_HEIGHT * LEVEL_WIDTH);
 
+  level->magic_wall.num = 0;
+  level->magic_wall.is_on = false;
+
   for (int y = 0; y < LEVEL_HEIGHT; ++y) {
     for (int x = 0; x < LEVEL_WIDTH; ++x) {
       if (level->tiles[y][x] == 'E') {
@@ -323,6 +336,12 @@ void load_level(Level *level, int num_level) {
 
       if (level->tiles[y][x] == 'a') {
         add_water(level, x, y);
+      }
+
+      if (level->tiles[y][x] == 'm') {
+        level->magic_wall.bricks[level->magic_wall.num].x = x;
+        level->magic_wall.bricks[level->magic_wall.num].y = y;
+        level->magic_wall.num++;
       }
     }
   }
@@ -418,6 +437,24 @@ void remove_obj(Objects *objs, v2 pos) {
       objs->num -= 1;
     }
   }
+}
+
+void run_magic_wall(Level *level) {
+  for (int i = 0; i < level->magic_wall.num; i++) {
+    level->tiles[level->magic_wall.bricks[i].y][level->magic_wall.bricks[i].x] = 'M';
+  }
+  level->magic_wall.start_time = time_now();
+  level->magic_wall.is_on = true;
+  play_looped_sound(SOUND_MAGIC_WALL);
+}
+
+void stop_magic_wall(Level *level) {
+  for (int i = 0; i < level->magic_wall.num; i++) {  // 20 number of bricks for magic wall for level
+    level->tiles[level->magic_wall.bricks[i].y][level->magic_wall.bricks[i].x] = 'm';
+  }
+  level->magic_wall.start_time = 0;
+  level->magic_wall.is_on = false;
+  stop_looped_sounds();
 }
 
 void add_explosion(Level *level, v2 pos, char type) {
@@ -583,11 +620,16 @@ bool drop_objects(Level *level, char obj_sym) {
     char tile_above = level->tiles[y - 1][x];
     char tile_under = level->tiles[y + 1][x];
 
+    // A falling rock or diamond activate magic wall
+    if (tile_under == 'm' && falling && !level->magic_wall.is_on) {
+      run_magic_wall(level);
+      play_sound(SOUND_DIAMOND_1);
+    }
+
     // Kill enemy
     if (tile_under == 'f' || tile_under == 'b') {
       play_sound(SOUND_EXPLODED);
       play_fall_sound = true;
-
       add_explosion(level, V2(x, y + 1), tile_under);
     }
 
@@ -597,6 +639,32 @@ bool drop_objects(Level *level, char obj_sym) {
       play_fall_sound = true;
       add_explosion(level, V2(x, y + 1), tile_under);
       return true;
+    }
+
+    // If there is space in the position below the magic wall then the boulder morphs into a falling
+    // diamond and moves down two positions, to be below the magic wall
+    if (tile_under == 'M' && level->tiles[y + 2][x] == '_') {
+      stone->falling = true;
+      stone->pos.y += 2;
+      level->tiles[y][x] = '_';
+
+      if (obj_sym == 'r') {
+        play_sound(SOUND_DIAMOND_1);
+        remove_obj(&level->rocks, V2(x, y + 2));  // remove rock
+        add_diamond(level, x, y + 2);
+        obj_sym = 'd';
+        objs = &level->diamonds;
+      }
+    }
+
+    // Otherwise the rock simply disappears
+    if (tile_under == 'M' && level->tiles[y + 2][x] != '_') {
+      level->tiles[y][x] = '_';
+
+      if (obj_sym == 'r') {
+        remove_obj(&level->rocks, V2(x, y));  // remove rock
+        continue;
+      }
     }
 
     if (tile_under == '_') {
@@ -860,7 +928,7 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
       }
       if (tile_type == 'r') {
         src = V2(0, 224);
-      } else if (tile_type == 'w') {
+      } else if (tile_type == 'w' || tile_type == 'm') {
         src = V2(96, 192);
       } else if (tile_type == 'W') {
         src = V2(32, 192);
@@ -886,6 +954,8 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
         src = get_frame(ANIM_PLAYER_HERE);
       } else if (tile_type == 'a') {
         src = get_frame(ANIM_WATER);
+      } else if (tile_type == 'M') {
+        src = get_frame(ANIM_MAGIC_WALL);
       }
 
       draw_tile_px(draw_context, src, dst);
@@ -1258,6 +1328,11 @@ StateId level_gameplay(GameState *state) {
       player_animation = ANIM_IDLE1;
     }
 
+    // Check if time for running magic wall is over
+    if (level->magic_wall.is_on && seconds_since(level->magic_wall.start_time) > 30) {
+      stop_magic_wall(level);
+    }
+
     // Draw level
     draw_level(level->tiles, draw_context, viewport);
 
@@ -1384,7 +1459,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 7;
+  state.level_id = 18;
   state.draw_context = draw_context;
   state.viewport = viewport;
   state.state_id = LEVEL_STARTING;
