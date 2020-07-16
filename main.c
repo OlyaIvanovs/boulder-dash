@@ -438,7 +438,6 @@ void remove_obj(Objects *objs, v2 pos) {
       *pos = *pos_lst;
       *falling = *falling_lst;
       objs->num -= 1;
-      break;
     }
   }
 }
@@ -651,30 +650,21 @@ bool drop_objects(Level *level, char obj_sym) {
 
     // If there is space in the position below the magic wall then the rock/diamond morphs into a
     // falling diamond/rock and moves down two positions, to be below the magic wall
-    if (tile_under == 'M' && level->tiles[y + 2][x] == '_' && falling) {
+    if (tile_under == 'M' && (level->tiles[y + 2][x] == '_' || level->tiles[y + 2][x] == 'l') &&
+        falling) {
       stone->pos.y += 2;
       level->tiles[y][x] = '_';
+
       if (obj_sym == 'r') {  // if rock is falling
         play_sound(SOUND_DIAMOND_1);
-        add_obj(&level->diamonds, V2(x, y + 2));
         remove_obj(&level->rocks, V2(x, y + 2));  // remove rock
+        add_obj(&level->diamonds, V2(x, y + 2));
         level->tiles[y + 2][x] = 'd';
       } else if (obj_sym == 'd') {  // if diamond is falling
         play_sound(SOUND_STONE);
-        add_obj(&level->rocks, V2(x, y + 2));
         remove_obj(&level->diamonds, V2(x, y + 2));  // remove diamond
+        add_obj(&level->rocks, V2(x, y + 2));
         level->tiles[y + 2][x] = 'r';
-      }
-      continue;
-    }
-
-    // Otherwise the rock simply disappears
-    if (tile_under == 'M' && level->tiles[y + 2][x] != '_' && falling) {
-      level->tiles[y][x] = '_';
-      if (obj_sym == 'r') {
-        remove_obj(&level->rocks, V2(x, y));  // remove rock
-      } else if (obj_sym == 'd') {
-        remove_obj(&level->diamonds, V2(x, y));  // remove diamond
       }
       continue;
     }
@@ -982,6 +972,7 @@ StateId level_starting(GameState *state) {
   DrawContext *draw_context = &state->draw_context;
   Tiles load_tiles;
   SDL_memcpy(load_tiles, gLoadTiles, LEVEL_HEIGHT * LEVEL_WIDTH);
+  stop_looped_sounds();
 
   Input input = {};
 
