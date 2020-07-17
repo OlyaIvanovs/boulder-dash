@@ -1048,8 +1048,8 @@ StateId level_ending(GameState *state) {
   }
 
   state->level_id++;
-  if (state->level_id >= sizeof(gLevels)) {
-    return QUIT_GAME;  // TODO; you won!
+  if (state->level_id >= COUNT(gLevels)) {
+    return YOU_WIN;
   }
   return LEVEL_STARTING;
 }
@@ -1078,6 +1078,27 @@ StateId player_dying(GameState *state) {
 
 StateId out_of_time(GameState *state) {
   return player_dying(state);
+}
+
+void you_win(GameState *state) {
+  printf("You win!");
+  DrawContext *draw_context = &state->draw_context;
+  Viewport *viewport = &state->viewport;
+
+  stop_looped_sounds();
+  play_sound(SOUND_BD1);
+  srand(time(NULL));
+  u64 start = time_now();
+
+  while (seconds_since(start) <= 5.5) {
+    // Display 'YOU WIN'
+    char msg[7] = "YOU WIN";
+    for (int i = 0; i < 7; i++) {
+      v2 pos_char = {gTileSize * (11 + i), 8 * gTileSize};
+      draw_char(draw_context, pos_char, msg[i]);
+    }
+    update_screen(draw_context);
+  }
 }
 
 StateId level_gameplay(GameState *state) {
@@ -1487,6 +1508,10 @@ int main() {
         state.state_id = out_of_time(&state);
       } break;
       case QUIT_GAME: {
+        is_running = false;
+      } break;
+      case YOU_WIN: {
+        you_win(&state);
         is_running = false;
       } break;
       default:
