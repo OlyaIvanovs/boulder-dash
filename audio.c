@@ -42,11 +42,11 @@ Sound *load_all_sounds() {
       "sounds/diamond_2.ogg", "sounds/diamond_3.ogg",       "sounds/diamond_4.ogg",
       "sounds/diamond_5.ogg", "sounds/diamond_6.ogg",       "sounds/diamond_7.ogg",
       "sounds/diamond_8.ogg", "sounds/diamond_collect.ogg", "sounds/walk_d.ogg",
-      "sounds/cover.ogg",     "sounds/crack.ogg",           "sounds/finished.ogg",
-      "sounds/exploded.ogg",  "sounds/timeout_1.ogg",       "sounds/timeout_2.ogg",
-      "sounds/timeout_3.ogg", "sounds/timeout_4.ogg",       "sounds/timeout_5.ogg",
-      "sounds/timeout_6.ogg", "sounds/timeout_7.ogg",       "sounds/timeout_8.ogg",
-      "sounds/timeout_9.ogg", "sounds/amoeba.ogg",          "sounds/walk_e.ogg",
+      "sounds/cover.ogg",     "sounds/finished.ogg",        "sounds/exploded.ogg",
+      "sounds/timeout_1.ogg", "sounds/timeout_2.ogg",       "sounds/timeout_3.ogg",
+      "sounds/timeout_4.ogg", "sounds/timeout_5.ogg",       "sounds/timeout_6.ogg",
+      "sounds/timeout_7.ogg", "sounds/timeout_8.ogg",       "sounds/timeout_9.ogg",
+      "sounds/crack.ogg",     "sounds/amoeba.ogg",          "sounds/walk_e.ogg",
       "sounds/stone_2.ogg",   "sounds/magic_wall.ogg",
   };
 

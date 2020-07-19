@@ -346,7 +346,7 @@ void load_level(Level *level, int num_level) {
     }
   }
 
-  level->time_left = 150;
+  level->time_left = 20;
   level->score_per_diamond = 10;
   level->min_diamonds = gLevel_min_diamonds[num_level];
   level->diamonds_collected = 0;
@@ -786,7 +786,7 @@ void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_dig
 void draw_char(DrawContext *context, v2 pos, char letter) {
   int num_letter = tolower(letter) - tolower('a');
   v2 src = {288, 529 + num_letter * 16};
-  v2 dst = {pos.x, pos.y};
+  v2 dst = {pos.x, pos.y};  // in px
   SDL_Rect src_rect = {src.x, src.y, 32, 16};
   SDL_Rect dst_rect = {context->window_offset.x + dst.x, context->window_offset.y + dst.y,
                        gTileSize, gTileSize};
@@ -1081,7 +1081,6 @@ StateId out_of_time(GameState *state) {
 }
 
 void you_win(GameState *state) {
-  printf("You win!");
   DrawContext *draw_context = &state->draw_context;
   Viewport *viewport = &state->viewport;
 
@@ -1120,6 +1119,8 @@ StateId level_gameplay(GameState *state) {
   const double kDropDelay = 0.15;
   const double kEnemyMoveDelay = 0.15;
   const double kFloodingDelay = 1.25;
+
+  SoundId sound_out_of_time = SOUND_TIMEOUT_9;
 
   AnimationId player_animation = ANIM_IDLE1;
   AnimationId previos_direction_anim = ANIM_GO_RIGHT;
@@ -1383,8 +1384,15 @@ StateId level_gameplay(GameState *state) {
 
     // Time left
     level->time_left = level_time - (int)(seconds_since(start));
+
     // Time is over
-    if (level->time_left < 0) {
+    if (level->time_left < 10 && level->time_left >= 0) {
+      SoundId next_sound_out_of_time = SOUND_TIMEOUT_9 - level->time_left + 1;
+      if (next_sound_out_of_time != sound_out_of_time) {  // new sound every new second
+        play_sound(next_sound_out_of_time);
+        sound_out_of_time = next_sound_out_of_time;
+      }
+    } else if (level->time_left < 0) {
       level->time_left = 0;
       return OUT_OF_TIME;
     }
