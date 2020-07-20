@@ -17,7 +17,7 @@
 // ======================================= Types ===================================================
 
 typedef enum StateId {
-  MENU,
+  START_GAME,
   LEVEL_STARTING,
   LEVEL_GAMEPLAY,
   LEVEL_ENDING,
@@ -43,6 +43,8 @@ typedef struct {
   bool quit;
   bool reset;
   bool pickup;  // collect diamond without moving with Ctrl
+
+  bool any_key;  // check if ane key pressed (to starts)
 } Input;
 
 typedef struct {
@@ -234,11 +236,6 @@ void process_input(Input *input) {
     if (event.type == SDL_QUIT) {
       input->quit = true;
     }
-    if (event.type == SDL_KEYUP) {
-      if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
-        input->quit = true;
-      }
-    }
 
     if (event.type == SDL_KEYDOWN) {
       if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
@@ -259,6 +256,10 @@ void process_input(Input *input) {
     }
 
     if (event.type == SDL_KEYUP) {
+      input->any_key = true;
+      if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+        input->quit = true;
+      }
       if (event.key.keysym.scancode == SDL_SCANCODE_RIGHT) {
         input->right = false;
       }
@@ -783,13 +784,29 @@ void draw_number(DrawContext *context, int num, v2 pos, Color color, int min_dig
   }
 }
 
-void draw_char(DrawContext *context, v2 pos, char letter) {
+void draw_char(DrawContext *context, v2 pos, char letter, bool small_char, Color color) {
+  int letter_size = gTileSize;
+  if (small_char) {
+    letter_size = 20;
+  }
   int num_letter = tolower(letter) - tolower('a');
-  v2 src = {288, 529 + num_letter * 16};
+  v2 src = {288, 530 + num_letter * 16};
+
+  if (color == COLOR_WHITE) {
+    src.x = 256;
+  }
   v2 dst = {pos.x, pos.y};  // in px
   SDL_Rect src_rect = {src.x, src.y, 32, 16};
   SDL_Rect dst_rect = {context->window_offset.x + dst.x, context->window_offset.y + dst.y,
-                       gTileSize, gTileSize};
+                       letter_size, letter_size};
+  SDL_RenderCopy(context->renderer, context->texture, &src_rect, &dst_rect);
+}
+
+void draw_logo(DrawContext *context, v2 pos) {
+  SDL_Rect src_rect = {0, 0, 609, 273};
+  v2 dst = {pos.x, pos.y};  // in px
+  SDL_Rect dst_rect = {context->window_offset.x + dst.x, context->window_offset.y + dst.y, 609,
+                       273};
   SDL_RenderCopy(context->renderer, context->texture, &src_rect, &dst_rect);
 }
 
@@ -808,7 +825,7 @@ void draw_status_bar(GameState *state) {
     int start = 10;
     char text[11] = "OUT OF TIME";
     for (int i = 0; i < sizeof(text); i++) {
-      draw_char(draw_context, V2((start + i) * gTileSize, 0), text[i]);
+      draw_char(draw_context, V2((start + i) * gTileSize, 0), text[i], false, COLOR_YELLOW);
     }
     return;
   }
@@ -966,16 +983,42 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
   draw_outside_border(draw_context, viewport);
 }
 
+StateId start_game(GameState *state, DrawContext *logo_draw_context) {
+  DrawContext *draw_context = &state->draw_context;
+  Viewport *viewport = &state->viewport;
+
+  play_sound(SOUND_BD1);
+
+  char msg[22] = "PRESS ANY KEY TO START";
+  for (int i = 0; i < 22; i++) {
+    v2 pos_char = {gTileSize * (5 + i), 12 * gTileSize};
+    draw_char(draw_context, pos_char, msg[i], true, COLOR_WHITE);
+  }
+  v2 pos_logo = {gTileSize * 10, 5 * gTileSize};
+  draw_logo(logo_draw_context, pos_logo);
+  update_screen(draw_context);
+
+  Input input = {};
+
+  while (!input.quit) {
+    process_input(&input);
+    if (input.any_key) {
+      return LEVEL_STARTING;
+    }
+  }
+  return START_GAME;
+}
+
 StateId level_starting(GameState *state) {
   Viewport *viewport = &state->viewport;
   Level *level = &state->level;
   DrawContext *draw_context = &state->draw_context;
   Tiles load_tiles;
   SDL_memcpy(load_tiles, gLoadTiles, LEVEL_HEIGHT * LEVEL_WIDTH);
-  stop_looped_sounds();
 
   Input input = {};
 
+  stop_looped_sounds();
   play_sound(SOUND_COVER);
   load_level(level, state->level_id);
 
@@ -1094,7 +1137,7 @@ void you_win(GameState *state) {
     char msg[7] = "YOU WIN";
     for (int i = 0; i < 7; i++) {
       v2 pos_char = {gTileSize * (11 + i), 8 * gTileSize};
-      draw_char(draw_context, pos_char, msg[i]);
+      draw_char(draw_context, pos_char, msg[i], false, COLOR_YELLOW);
     }
     update_screen(draw_context);
   }
@@ -1245,7 +1288,7 @@ StateId level_gameplay(GameState *state) {
     // Flooding
     if (level->waters.num > 0 && seconds_since(flooding_last_time) > kFloodingDelay) {
       flooding_last_time = time_now();
-      if (!play_sound_water) {
+      if (!play_sound_water) {  // turn on looped sound once
         play_looped_sound(SOUND_AMOEBA);
         play_sound_water = true;
       }
@@ -1466,6 +1509,29 @@ int main() {
     }
   }
 
+  // Load logo texture
+  SDL_Texture *logo_texture;
+  {
+    int width, height, num_channels;
+    void *pixels = stbi_load("BD-logo.png", &width, &height, &num_channels, 0);
+
+    SDL_Rect rect = {0, 0, width, height};
+
+    logo_texture =
+        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
+    if (texture == NULL) {
+      printf("Couldn't create texture: %s\n", SDL_GetError());
+      return 1;
+    }
+
+    int result = SDL_UpdateTexture(logo_texture, &rect, pixels,
+                                   width * num_channels);  // load to video memory
+    if (result != 0) {
+      printf("Couldn't update texture: %s\n", SDL_GetError());
+      return 1;
+    }
+  }
+
   Viewport viewport;
   viewport.width = 30;
   gTileSize = window_width / viewport.width;
@@ -1488,18 +1554,22 @@ int main() {
   window_offset.y = (window_height % gTileSize) / 2;
 
   DrawContext draw_context = {renderer, texture, window_offset};
+  DrawContext logo_draw_context = {renderer, logo_texture, window_offset};
 
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 19;
+  state.level_id = 0;
   state.draw_context = draw_context;
   state.viewport = viewport;
-  state.state_id = LEVEL_STARTING;
+  state.state_id = START_GAME;
 
   bool is_running = true;
   while (is_running) {
     switch (state.state_id) {
+      case START_GAME: {
+        state.state_id = start_game(&state, &logo_draw_context);
+      } break;
       case LEVEL_STARTING: {
         state.state_id = level_starting(&state);
       } break;
