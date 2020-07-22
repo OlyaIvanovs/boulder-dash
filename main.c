@@ -84,7 +84,7 @@ typedef struct Objects {
 } Objects;
 
 typedef struct Waters {
-  v2 pos[LEVEL_WIDTH * LEVEL_HEIGHT / 3];
+  v2 pos[LEVEL_WIDTH * LEVEL_HEIGHT / 2];
   int num;
 } Waters;
 
@@ -99,7 +99,7 @@ typedef struct Enemy {
 } Enemy;
 
 typedef struct Enemies {
-  Enemy objects[20];
+  Enemy objects[40];
   int num;
 } Enemies;
 
@@ -347,7 +347,7 @@ void load_level(Level *level, int num_level) {
     }
   }
 
-  level->time_left = 20;
+  level->time_left = 150;
   level->score_per_diamond = 10;
   level->min_diamonds = gLevel_min_diamonds[num_level];
   level->diamonds_collected = 0;
@@ -412,7 +412,7 @@ bool enemy_can_move(Level *level, v2 pos) {
     return false;
   }
   char tile_type = level->tiles[pos.y][pos.x];
-  if (tile_type == '_' || tile_type == ' ' || tile_type == 'p') {
+  if (tile_type == '_' || tile_type == ' ' || tile_type == 'p' || tile_type == 'a') {
     return true;
   }
   return false;
@@ -425,6 +425,19 @@ void remove_enemy(Enemies *enemies, v2 pos) {
       v2 *pos_lst = &enemies->objects[enemies->num - 1].pos;
       *pos = *pos_lst;
       enemies->num -= 1;
+      return;
+    }
+  }
+}
+
+void remove_water(Waters *waters, v2 pos) {
+  for (int i = 0; i < waters->num; i++) {
+    if (waters->pos[i].x == pos.x && waters->pos[i].y == pos.y) {
+      v2 *pos = &waters->pos[i];
+      v2 *pos_lst = &waters->pos[waters->num - 1];
+      *pos = *pos_lst;
+      waters->num -= 1;
+      return;
     }
   }
 }
@@ -447,12 +460,6 @@ void add_obj(Objects *objs, v2 pos) {
   objs->objects[objs->num].pos = pos;
   objs->objects[objs->num++].falling = false;
   assert(objs->num < COUNT(objs->objects));
-}
-
-void add_diamond(Level *level, int x, int y) {
-  level->tiles[y][x] = 'd';
-  level->diamonds.objects[level->diamonds.num++].pos = V2(x, y);
-  assert(level->diamonds.num < COUNT(level->diamonds.objects));
 }
 
 void stop_magic_wall(Level *level) {
@@ -490,10 +497,16 @@ void add_explosion(Level *level, v2 pos, char type) {
 
   Rect area = create_rect(start.x, start.y, end.x, end.y);
 
+  printf("rect area start.x %d\n", start.x);
+  printf("rect area start.y %d\n", start.y);
+  printf("rect area end.x %d\n", end.x);
+  printf("rect area end.y %d\n", end.y);
+
   // Remove objects and set tiles
   for (int y = area.top; y <= area.bottom; ++y) {
     for (int x = area.left; x <= area.right; ++x) {
       char tile = level->tiles[y][x];
+      printf("%c \n", tile);
       if (tile == 'r') {
         remove_obj(&level->rocks, V2(x, y));
       } else if (tile == 'd') {
@@ -502,6 +515,8 @@ void add_explosion(Level *level, v2 pos, char type) {
         remove_enemy(&level->enemies, V2(x, y));
       } else if (tile == 'b') {
         remove_enemy(&level->butterflies, V2(x, y));
+      } else if (tile == 'a') {
+        remove_water(&level->waters, V2(x, y));
       }
       level->tiles[y][x] = '*';  // ignore this tile when draw
     }
@@ -545,11 +560,12 @@ bool move_enemies(Level *level, char obj_sym) {
     Enemy *enemy = &enemies->objects[i];
 
     assert(level->tiles[enemy->pos.y][enemy->pos.x] == obj_sym);
-    level->tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
+    // level->tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
 
     v2 pos_forward = sum_v2(enemy->pos, enemy->direction);
     v2 pos_right = sum_v2(enemy->pos, turn_right(enemy->direction));
     v2 pos_right_diag = sum_v2(pos_right, V2(-enemy->direction.x, -enemy->direction.y));
+    v2 prev_enemy_pos = enemy->pos;
 
     if (enemy_can_move(level, pos_right) &&
         level->tiles[pos_right_diag.y][pos_right_diag.x] != '_') {
@@ -571,7 +587,14 @@ bool move_enemies(Level *level, char obj_sym) {
       return true;
     }
 
-    level->tiles[enemy->pos.y][enemy->pos.x] = obj_sym;  // "draw"
+    if (level->tiles[enemy->pos.y][enemy->pos.x] == 'a') {  // water collision
+      play_sound(SOUND_EXPLODED);
+      v2 explosion_point = enemy->pos;
+      enemy->pos = prev_enemy_pos;  // do not move enemy to next position to explode it
+      add_explosion(level, V2(explosion_point.x, explosion_point.y), obj_sym);
+    } else {
+      level->tiles[enemy->pos.y][enemy->pos.x] = obj_sym;  // "draw"
+    }
   }
 
   return false;
@@ -987,7 +1010,7 @@ StateId start_game(GameState *state, DrawContext *logo_draw_context) {
   DrawContext *draw_context = &state->draw_context;
   Viewport *viewport = &state->viewport;
 
-  play_sound(SOUND_BD1);
+  play_looped_sound(SOUND_BD1);
 
   char msg[22] = "PRESS ANY KEY TO START";
   for (int i = 0; i < 22; i++) {
@@ -999,7 +1022,6 @@ StateId start_game(GameState *state, DrawContext *logo_draw_context) {
   update_screen(draw_context);
 
   Input input = {};
-
   while (!input.quit) {
     process_input(&input);
     if (input.any_key) {
@@ -1559,7 +1581,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 0;
+  state.level_id = 15;
   state.draw_context = draw_context;
   state.viewport = viewport;
   state.state_id = START_GAME;
