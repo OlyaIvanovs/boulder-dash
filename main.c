@@ -1,5 +1,6 @@
 #include <SDL2/SDL_rect.h>
 #include <SDL2/SDL_render.h>
+#include <SDL2/SDL_stdinc.h>
 #include <assert.h>
 #include <math.h>
 #include <stdbool.h>
@@ -31,6 +32,36 @@ typedef enum {
   COLOR_WHITE = 0,
   COLOR_YELLOW,
 } Color;
+
+typedef enum BackColorId {
+  BG_BLUE,
+  BG_GREEN,
+  BG_RED,
+  BG_YELLOW,
+  BG_BLACK,
+  BG_VIOLET,
+
+  BACK_COLOR_COUNT
+} BackColorId;
+
+typedef enum AnimationId {
+  ANIM_DIAMOND,
+  ANIM_ENEMY,
+  ANIM_ENEMY_EXPLODED,
+  ANIM_BUTTERFLY,
+  ANIM_BUTTERFLY_EXPLODED,
+  ANIM_IDLE1,
+  ANIM_GO_LEFT,
+  ANIM_GO_RIGHT,
+  ANIM_IDLE2,
+  ANIM_IDLE3,
+  ANIM_EXIT,
+  ANIM_PLAYER_HERE,
+  ANIM_WATER,
+  ANIM_MAGIC_WALL,
+
+  ANIM_COUNT,
+} AnimationId;
 
 typedef char Tiles[LEVEL_HEIGHT][LEVEL_WIDTH];
 
@@ -139,6 +170,13 @@ typedef struct {
   v2 window_offset;
 } DrawContext;
 
+// For different colors for
+typedef struct BackColor {
+  int r;  // red
+  int g;  // green
+  int b;  // blue
+} BackColor;
+
 typedef struct Level {
   Tiles tiles;
   Objects diamonds;
@@ -171,25 +209,6 @@ typedef struct Viewport {
   Rect player_area;
 } Viewport;
 
-typedef enum AnimationId {
-  ANIM_DIAMOND,
-  ANIM_ENEMY,
-  ANIM_ENEMY_EXPLODED,
-  ANIM_BUTTERFLY,
-  ANIM_BUTTERFLY_EXPLODED,
-  ANIM_IDLE1,
-  ANIM_GO_LEFT,
-  ANIM_GO_RIGHT,
-  ANIM_IDLE2,
-  ANIM_IDLE3,
-  ANIM_EXIT,
-  ANIM_PLAYER_HERE,
-  ANIM_WATER,
-  ANIM_MAGIC_WALL,
-
-  ANIM_COUNT,
-} AnimationId;
-
 typedef struct GameState {
   Level level;
   DrawContext draw_context;
@@ -198,7 +217,6 @@ typedef struct GameState {
   int level_id;
   int score;
 } GameState;
-
 // ======================================= Globals =================================================
 
 Animation gAnimations[ANIM_COUNT] = {
@@ -218,7 +236,21 @@ Animation gAnimations[ANIM_COUNT] = {
     {{96, 192}, 0, 5, 20, 0},  // ANIM_MAGIC_WALL,
 };
 
+BackColor gBackColors[BACK_COLOR_COUNT] = {
+    {0, 0, 255},    // BG_BLUE
+    {0, 255, 0},    // BG_GREEN
+    {255, 0, 0},    // BG_RED
+    {255, 255, 0},  // BG_YELLOW
+    {0, 0, 0},      // BG_BLACK
+    {128, 0, 128},  // BG_VIOLET
+};
+
 int gTileSize;
+
+BackColorId gLevel_colors[20] = {BG_BLACK,  BG_VIOLET, BG_BLUE,   BG_GREEN,  BG_RED,
+                                 BG_YELLOW, BG_BLACK,  BG_VIOLET, BG_BLACK,  BG_VIOLET,
+                                 BG_BLUE,   BG_GREEN,  BG_RED,    BG_YELLOW, BG_BLACK,
+                                 BG_VIOLET, BG_BLACK,  BG_VIOLET, BG_BLUE,   BG_GREEN};
 
 // ======================================= Functions ===============================================
 
@@ -882,7 +914,12 @@ void draw_status_bar(GameState *state) {
   draw_number(draw_context, level->diamonds_collected, pos_diamonds, COLOR_YELLOW, 2);
 }
 
-void update_screen(DrawContext *draw_context) {
+void update_screen(DrawContext *draw_context, int level_id) {
+  BackColorId color_id = gLevel_colors[level_id];
+  BackColor color = gBackColors[color_id];
+  // SDL_SetRenderDrawColor(draw_context->renderer, 255, 255, 0, 255);
+  SDL_SetRenderDrawColor(draw_context->renderer, color.r, color.g, color.b, 255);
+  SDL_SetTextureBlendMode(draw_context->texture, SDL_BLENDMODE_BLEND);
   SDL_RenderPresent(draw_context->renderer);
   SDL_RenderClear(draw_context->renderer);
 }
@@ -1019,7 +1056,7 @@ StateId start_game(GameState *state, DrawContext *logo_draw_context) {
   }
   v2 pos_logo = {gTileSize * 10, 5 * gTileSize};
   draw_logo(logo_draw_context, pos_logo);
-  update_screen(draw_context);
+  update_screen(draw_context, state->level_id);
 
   Input input = {};
   while (!input.quit) {
@@ -1078,7 +1115,7 @@ StateId level_starting(GameState *state) {
     }
 
     draw_status_bar(state);
-    update_screen(draw_context);
+    update_screen(draw_context, state->level_id);
   }
   return LEVEL_GAMEPLAY;
 }
@@ -1109,7 +1146,7 @@ StateId level_ending(GameState *state) {
       return QUIT_GAME;
     }
 
-    update_screen(draw_context);
+    update_screen(draw_context, state->level_id);
   }
 
   state->level_id++;
@@ -1136,7 +1173,7 @@ StateId player_dying(GameState *state) {
       return QUIT_GAME;
     }
 
-    update_screen(draw_context);
+    update_screen(draw_context, state->level_id);
   }
   return LEVEL_STARTING;
 }
@@ -1161,7 +1198,7 @@ void you_win(GameState *state) {
       v2 pos_char = {gTileSize * (11 + i), 8 * gTileSize};
       draw_char(draw_context, pos_char, msg[i], false, COLOR_YELLOW);
     }
-    update_screen(draw_context);
+    update_screen(draw_context, state->level_id);
   }
 }
 
@@ -1463,7 +1500,7 @@ StateId level_gameplay(GameState *state) {
     }
 
     draw_status_bar(state);
-    update_screen(draw_context);
+    update_screen(draw_context, state->level_id);
 
     // {
     //     u64 now = time_now();
@@ -1522,9 +1559,12 @@ int main() {
       printf("Couldn't create texture: %s\n", SDL_GetError());
       return 1;
     }
+    SDL_SetTextureAlphaMod(texture, 220);
+    // SDL_SetTextureColorMod(texture, 255, 255, 0);  // set yellow
 
     int result = SDL_UpdateTexture(texture, &rect, pixels,
                                    width * num_channels);  // load to video memory
+
     if (result != 0) {
       printf("Couldn't update texture: %s\n", SDL_GetError());
       return 1;
@@ -1581,7 +1621,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 15;
+  state.level_id = 19;
   state.draw_context = draw_context;
   state.viewport = viewport;
   state.state_id = START_GAME;
