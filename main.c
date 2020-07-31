@@ -529,16 +529,10 @@ void add_explosion(Level *level, v2 pos, char type) {
 
   Rect area = create_rect(start.x, start.y, end.x, end.y);
 
-  printf("rect area start.x %d\n", start.x);
-  printf("rect area start.y %d\n", start.y);
-  printf("rect area end.x %d\n", end.x);
-  printf("rect area end.y %d\n", end.y);
-
   // Remove objects and set tiles
   for (int y = area.top; y <= area.bottom; ++y) {
     for (int x = area.left; x <= area.right; ++x) {
       char tile = level->tiles[y][x];
-      printf("%c \n", tile);
       if (tile == 'r') {
         remove_obj(&level->rocks, V2(x, y));
       } else if (tile == 'd') {
@@ -550,7 +544,7 @@ void add_explosion(Level *level, v2 pos, char type) {
       } else if (tile == 'a') {
         remove_water(&level->waters, V2(x, y));
       }
-      level->tiles[y][x] = '*';  // ignore this tile when draw
+      level->tiles[y][x] = '!';  // ignore this tile when draw
     }
   }
 
@@ -860,8 +854,8 @@ void draw_char(DrawContext *context, v2 pos, char letter, bool small_char, Color
 void draw_logo(DrawContext *context, v2 pos) {
   SDL_Rect src_rect = {0, 0, 609, 273};
   v2 dst = {pos.x, pos.y};  // in px
-  SDL_Rect dst_rect = {context->window_offset.x + dst.x, context->window_offset.y + dst.y, 609,
-                       273};
+  SDL_Rect dst_rect = {context->window_offset.x + dst.x, context->window_offset.y + dst.y, 609 * 2,
+                       273 * 2};
   SDL_RenderCopy(context->renderer, context->texture, &src_rect, &dst_rect);
 }
 
@@ -1035,6 +1029,8 @@ void draw_level(Tiles tiles, DrawContext *draw_context, Viewport *viewport) {
         src = get_frame(ANIM_WATER);
       } else if (tile_type == 'M') {
         src = get_frame(ANIM_MAGIC_WALL);
+      } else if (tile_type == '!') {
+        src = V2(0, 192);
       }
 
       draw_tile_px(draw_context, src, dst);
@@ -1051,10 +1047,10 @@ StateId start_game(GameState *state, DrawContext *logo_draw_context) {
 
   char msg[22] = "PRESS ANY KEY TO START";
   for (int i = 0; i < 22; i++) {
-    v2 pos_char = {gTileSize * (5 + i), 12 * gTileSize};
+    v2 pos_char = {gTileSize * (4.5 + i), 12 * gTileSize};
     draw_char(draw_context, pos_char, msg[i], true, COLOR_WHITE);
   }
-  v2 pos_logo = {gTileSize * 10, 5 * gTileSize};
+  v2 pos_logo = {gTileSize * 5.5, 2.5 * gTileSize};
   draw_logo(logo_draw_context, pos_logo);
   update_screen(draw_context, state->level_id);
 
@@ -1149,10 +1145,10 @@ StateId level_ending(GameState *state) {
     update_screen(draw_context, state->level_id);
   }
 
-  state->level_id++;
-  if (state->level_id >= COUNT(gLevels)) {
+  if (state->level_id >= (COUNT(gLevels) - 1)) {
     return YOU_WIN;
   }
+  state->level_id++;
   return LEVEL_STARTING;
 }
 
@@ -1639,6 +1635,7 @@ int main() {
         state.state_id = level_gameplay(&state);
       } break;
       case LEVEL_ENDING: {
+        printf("level ending\n");
         state.state_id = level_ending(&state);
       } break;
       case PLAYER_DYING: {
