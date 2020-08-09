@@ -37,8 +37,8 @@ typedef enum BackColorId {
   BG_BLUE,
   BG_GREEN,
   BG_RED,
-  BG_YELLOW,
-  BG_BLACK,
+  BG_SKY,
+  BG_NORMAL,
   BG_VIOLET,
 
   BACK_COLOR_COUNT
@@ -236,21 +236,13 @@ Animation gAnimations[ANIM_COUNT] = {
     {{96, 192}, 0, 5, 20, 0},  // ANIM_MAGIC_WALL,
 };
 
-BackColor gBackColors[BACK_COLOR_COUNT] = {
-    {0, 0, 255},    // BG_BLUE
-    {0, 255, 0},    // BG_GREEN
-    {255, 0, 0},    // BG_RED
-    {255, 255, 0},  // BG_YELLOW
-    {0, 0, 0},      // BG_BLACK
-    {128, 0, 128},  // BG_VIOLET
-};
+SDL_Texture *gBackColorTextures[BACK_COLOR_COUNT];
+BackColorId gLevel_colors[20] = {BG_NORMAL, BG_VIOLET, BG_BLUE,   BG_GREEN,  BG_RED,
+                                 BG_SKY,    BG_NORMAL, BG_VIOLET, BG_NORMAL, BG_VIOLET,
+                                 BG_BLUE,   BG_GREEN,  BG_RED,    BG_SKY,    BG_NORMAL,
+                                 BG_VIOLET, BG_NORMAL, BG_VIOLET, BG_BLUE,   BG_GREEN};
 
 int gTileSize;
-
-BackColorId gLevel_colors[20] = {BG_BLACK,  BG_VIOLET, BG_BLUE,   BG_GREEN,  BG_RED,
-                                 BG_YELLOW, BG_BLACK,  BG_VIOLET, BG_BLACK,  BG_VIOLET,
-                                 BG_BLUE,   BG_GREEN,  BG_RED,    BG_YELLOW, BG_BLACK,
-                                 BG_VIOLET, BG_BLACK,  BG_VIOLET, BG_BLUE,   BG_GREEN};
 
 // ======================================= Functions ===============================================
 
@@ -909,11 +901,6 @@ void draw_status_bar(GameState *state) {
 }
 
 void update_screen(DrawContext *draw_context, int level_id) {
-  BackColorId color_id = gLevel_colors[level_id];
-  BackColor color = gBackColors[color_id];
-  // SDL_SetRenderDrawColor(draw_context->renderer, 255, 255, 0, 255);
-  SDL_SetRenderDrawColor(draw_context->renderer, color.r, color.g, color.b, 255);
-  SDL_SetTextureBlendMode(draw_context->texture, SDL_BLENDMODE_BLEND);
   SDL_RenderPresent(draw_context->renderer);
   SDL_RenderClear(draw_context->renderer);
 }
@@ -1070,6 +1057,11 @@ StateId level_starting(GameState *state) {
   DrawContext *draw_context = &state->draw_context;
   Tiles load_tiles;
   SDL_memcpy(load_tiles, gLoadTiles, LEVEL_HEIGHT * LEVEL_WIDTH);
+
+  // Choose texture
+  BackColorId color_id = gLevel_colors[state->level_id];
+  SDL_Texture *texture = gBackColorTextures[color_id];
+  draw_context->texture = texture;
 
   Input input = {};
 
@@ -1509,6 +1501,31 @@ StateId level_gameplay(GameState *state) {
   return QUIT_GAME;
 }
 
+SDL_Texture *load_texture(char *filename, SDL_Renderer *renderer) {
+  SDL_Texture *texture;
+  int width, height, num_channels;
+  void *pixels = stbi_load(filename, &width, &height, &num_channels, 0);
+
+  SDL_Rect rect = {0, 0, width, height};
+
+  texture =
+      SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
+  if (texture == NULL) {
+    printf("Couldn't create texture: %s\n", SDL_GetError());
+    return NULL;
+  }
+
+  int result = SDL_UpdateTexture(texture, &rect, pixels,
+                                 width * num_channels);  // load to video memory
+
+  if (result != 0) {
+    printf("Couldn't update texture: %s\n", SDL_GetError());
+    return NULL;
+  }
+
+  return texture;
+}
+
 int main() {
   if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_JOYSTICK | SDL_INIT_AUDIO) < 0) {
     return 1;
@@ -1541,54 +1558,16 @@ int main() {
     return 1;
   }
 
-  // Load texture
-  SDL_Texture *texture;
-  {
-    int width, height, num_channels;
-    void *pixels = stbi_load("bd-sprites.png", &width, &height, &num_channels, 0);
+  // Load textures
+  SDL_Texture *texture = load_texture("bd-sprites.png", renderer);
+  gBackColorTextures[BG_NORMAL] = texture;
+  gBackColorTextures[BG_BLUE] = load_texture("bd-sprites-blue.png", renderer);
+  gBackColorTextures[BG_GREEN] = load_texture("bd-sprites-green.png", renderer);
+  gBackColorTextures[BG_RED] = load_texture("bd-sprites-red.png", renderer);
+  gBackColorTextures[BG_SKY] = load_texture("bd-sprites-sky.png", renderer);
+  gBackColorTextures[BG_VIOLET] = load_texture("bd-sprites-violet.png", renderer);
 
-    SDL_Rect rect = {0, 0, width, height};
-
-    texture =
-        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
-    if (texture == NULL) {
-      printf("Couldn't create texture: %s\n", SDL_GetError());
-      return 1;
-    }
-    SDL_SetTextureAlphaMod(texture, 220);
-    // SDL_SetTextureColorMod(texture, 255, 255, 0);  // set yellow
-
-    int result = SDL_UpdateTexture(texture, &rect, pixels,
-                                   width * num_channels);  // load to video memory
-
-    if (result != 0) {
-      printf("Couldn't update texture: %s\n", SDL_GetError());
-      return 1;
-    }
-  }
-
-  // Load logo texture
-  SDL_Texture *logo_texture;
-  {
-    int width, height, num_channels;
-    void *pixels = stbi_load("BD-logo.png", &width, &height, &num_channels, 0);
-
-    SDL_Rect rect = {0, 0, width, height};
-
-    logo_texture =
-        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGB24, SDL_TEXTUREACCESS_STATIC, width, height);
-    if (texture == NULL) {
-      printf("Couldn't create texture: %s\n", SDL_GetError());
-      return 1;
-    }
-
-    int result = SDL_UpdateTexture(logo_texture, &rect, pixels,
-                                   width * num_channels);  // load to video memory
-    if (result != 0) {
-      printf("Couldn't update texture: %s\n", SDL_GetError());
-      return 1;
-    }
-  }
+  SDL_Texture *logo_texture = load_texture("BD-logo.png", renderer);
 
   Viewport viewport;
   viewport.width = 30;
@@ -1617,7 +1596,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 19;
+  state.level_id = 2;
   state.draw_context = draw_context;
   state.viewport = viewport;
   state.state_id = START_GAME;
