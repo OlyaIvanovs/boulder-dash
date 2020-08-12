@@ -578,7 +578,7 @@ bool move_enemies(Level *level, char obj_sym) {
     Enemy *enemy = &enemies->objects[i];
 
     assert(level->tiles[enemy->pos.y][enemy->pos.x] == obj_sym);
-    // level->tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
+    level->tiles[enemy->pos.y][enemy->pos.x] = '_';  // "erase"
 
     v2 pos_forward = sum_v2(enemy->pos, enemy->direction);
     v2 pos_right = sum_v2(enemy->pos, turn_right(enemy->direction));
@@ -607,9 +607,9 @@ bool move_enemies(Level *level, char obj_sym) {
 
     if (level->tiles[enemy->pos.y][enemy->pos.x] == 'a') {  // water collision
       play_sound(SOUND_EXPLODED);
-      v2 explosion_point = enemy->pos;
       enemy->pos = prev_enemy_pos;  // do not move enemy to next position to explode it
-      add_explosion(level, V2(explosion_point.x, explosion_point.y), obj_sym);
+      level->tiles[enemy->pos.y][enemy->pos.x] = obj_sym;
+      add_explosion(level, V2(enemy->pos.x, enemy->pos.y), obj_sym);
     } else {
       level->tiles[enemy->pos.y][enemy->pos.x] = obj_sym;  // "draw"
     }
@@ -1596,7 +1596,7 @@ int main() {
   // Persistent game state
   GameState state = {};
   state.score = 0;
-  state.level_id = 2;
+  state.level_id = 15;
   state.draw_context = draw_context;
   state.viewport = viewport;
   state.state_id = START_GAME;
